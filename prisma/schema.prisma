@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum SymbolCode {
+  SOXL
+}
+
+enum Division {
+  D20
+  D40
+}
+
+enum StrategyMode {
+  NORMAL
+  REVERSE
+}
+
+enum TradeType {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  LOC
+  MOC
+  LIMIT
+}
+
+model StrategyConfig {
+  id               String       @id @default(cuid())
+  name             String
+  symbol           SymbolCode   @default(SOXL)
+  division         Division
+  initialCapital   Float
+  cashBalance      Float
+  averagePrice     Float
+  quantity         Int
+  tValue           Float
+  mode             StrategyMode @default(NORMAL)
+  reverseStartedAt DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  trades           Trade[]
+}
+
+model Trade {
+  id                 String       @id @default(cuid())
+  strategyId         String
+  strategy           StrategyConfig @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  type               TradeType
+  orderType          OrderType
+  price              Float
+  quantity           Int
+  amount             Float
+  fee                Float        @default(0)
+  tBefore            Float
+  tAfter             Float
+  cashBefore         Float
+  cashAfter          Float
+  quantityBefore     Int
+  quantityAfter      Int
+  averagePriceBefore Float
+  averagePriceAfter  Float
+  mode               StrategyMode
+  reason             String
+  tradedAt           DateTime
+  memo               String?
+  createdAt          DateTime     @default(now())
+
+  @@index([strategyId, tradedAt])
+}

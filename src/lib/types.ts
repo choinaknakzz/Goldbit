@@ -1,0 +1,99 @@
+export type Division = 20 | 40;
+export type SymbolCode = "SOXL";
+export type StrategyMode = "NORMAL" | "REVERSE";
+export type TradeType = "BUY" | "SELL";
+export type OrderType = "LOC" | "MOC" | "LIMIT";
+export type NormalTEvent =
+  | "FULL_BUY"
+  | "HALF_BUY"
+  | "QUARTER_SELL"
+  | "LIMIT_SELL_AND_FULL_LOC_BUY"
+  | "LIMIT_SELL_AND_HALF_LOC_BUY";
+
+export type DailyPhase =
+  | "FIRST_BUY"
+  | "FIRST_HALF"
+  | "SECOND_HALF"
+  | "REVERSE_FIRST_DAY"
+  | "REVERSE_ACTIVE";
+
+export interface StrategyConfig {
+  id: string;
+  name: string;
+  symbol: SymbolCode;
+  division: Division;
+  initialCapital: number;
+  cashBalance: number;
+  averagePrice: number;
+  quantity: number;
+  tValue: number;
+  mode: StrategyMode;
+  reverseStartedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlannedOrder {
+  side: TradeType;
+  orderType: OrderType;
+  price: number | null;
+  quantity: number | null;
+  amount: number | null;
+  reason: string;
+  priority: number;
+}
+
+export interface DailyPlan {
+  date: string;
+  symbol: SymbolCode;
+  mode: StrategyMode;
+  phase: DailyPhase;
+  tValue: number;
+  averagePrice: number;
+  cashBalance: number;
+  quantity: number;
+  starRate?: number;
+  starPrice?: number;
+  buyPrice?: number;
+  sellPrice?: number;
+  limitSellPrice?: number;
+  buyOrders: PlannedOrder[];
+  sellOrders: PlannedOrder[];
+  warnings: string[];
+}
+
+export interface Trade {
+  id: string;
+  strategyId: string;
+  type: TradeType;
+  orderType: OrderType;
+  price: number;
+  quantity: number;
+  amount: number;
+  fee: number;
+  tBefore: number;
+  tAfter: number;
+  cashBefore: number;
+  cashAfter: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  averagePriceBefore: number;
+  averagePriceAfter: number;
+  mode: StrategyMode;
+  reason: string;
+  tradedAt: string;
+  memo?: string;
+}
+
+export interface TradeInput {
+  type: TradeType;
+  orderType: OrderType;
+  price: number;
+  quantity: number;
+  fee: number;
+  reason: string;
+  tradedAt: string;
+  memo?: string;
+  normalTEvent?: NormalTEvent;
+  reverseTEvent?: "SELL" | "BUY";
+}
