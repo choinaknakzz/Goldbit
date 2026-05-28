@@ -61,6 +61,22 @@ The calculation tests cover:
 - reverse-mode T changes
 - reverse-mode exit
 
+## Update Verification
+
+After code updates, run the full local verification routine:
+
+```bash
+npm run verify:update
+```
+
+This runs lint, tests, a clean production build, clears the Next.js cache, restarts the local dev server, and smoke-checks the main pages for server/app errors.
+
+If the local page looks broken after a code change, restart from a clean Next.js cache:
+
+```bash
+npm run dev:clean
+```
+
 ## Main Features
 
 - SOXL-only strategy dashboard
@@ -69,6 +85,8 @@ The calculation tests cover:
 - T Value, average price, cash reserve, and quantity tracking
 - Star Price, Buy Point, Sell Point, and LIMIT sell price calculation
 - Today&apos;s buy and sell order plan
+- Previous close input that refreshes Today&apos;s plan and the rolling five-close list
+- Delayed SOXL quote fetch for quickly filling the latest close
 - Manual trade entry with post-fill state preview
 - History charts for T Value, average price, cash reserve, and quantity
 - Prisma schema prepared for SQLite and future PostgreSQL migration
@@ -140,4 +158,5 @@ Reverse mode:
 - Account-level data separation
 - Cloud database
 - Backup and restore
+- Backtesting for strategy review
 - Small-scale hosted service

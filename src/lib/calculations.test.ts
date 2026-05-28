@@ -5,6 +5,7 @@ import {
   applyReverseSellT,
   getBuyPrice,
   getDailyBuyAmount,
+  getFirstBuyLocPrice,
   getQuarterSellQuantity,
   getReverseFirstSellQuantity,
   getReverseStarPrice,
@@ -34,6 +35,10 @@ describe("SOXL infinite buying calculations", () => {
 
   it("calculates daily one-turn buy amount", () => {
     expect(getDailyBuyAmount(19522, 1, 40)).toBe(500.56);
+  });
+
+  it("calculates first buy LOC price from previous close", () => {
+    expect(getFirstBuyLocPrice(40)).toBe(44.8);
   });
 
   it("applies normal-mode T changes", () => {

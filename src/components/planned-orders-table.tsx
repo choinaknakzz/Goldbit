@@ -4,38 +4,52 @@ import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { PlannedOrder } from "@/lib/types";
 
 export function PlannedOrdersTable({ orders }: { orders: PlannedOrder[] }) {
+  const totalAmount = orders.reduce((sum, order) => {
+    if (order.price && order.quantity) {
+      return sum + order.price * order.quantity;
+    }
+
+    return sum + (order.amount ?? 0);
+  }, 0);
+
   if (orders.length === 0) {
     return <p className="rounded-md border border-border bg-white/[0.03] p-4 text-sm text-muted-foreground">No planned orders.</p>;
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <Table>
-        <THead>
-          <TR>
-            <TH>Side</TH>
-            <TH>Type</TH>
-            <TH>Price</TH>
-            <TH>Qty</TH>
-            <TH>Amount</TH>
-            <TH>Reason</TH>
-          </TR>
-        </THead>
-        <TBody>
-          {orders.map((order) => (
-            <TR key={`${order.side}-${order.orderType}-${order.priority}`}>
-              <TD>
-                <Badge variant={order.side === "BUY" ? "gold" : "muted"}>{order.side}</Badge>
-              </TD>
-              <TD>{order.orderType}</TD>
-              <TD>{formatCurrency(order.price)}</TD>
-              <TD>{formatNumber(order.quantity, 0)}</TD>
-              <TD>{formatCurrency(order.amount)}</TD>
-              <TD className="max-w-md text-muted-foreground">{order.reason}</TD>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between rounded-md border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm">
+        <span className="text-muted-foreground">Estimated Total</span>
+        <span className="font-semibold text-amber-100">{formatCurrency(totalAmount)}</span>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border">
+        <Table>
+          <THead>
+            <TR>
+              <TH>Side</TH>
+              <TH>Type</TH>
+              <TH>Price</TH>
+              <TH>Qty</TH>
+              <TH>Amount</TH>
+              <TH>Reason</TH>
             </TR>
-          ))}
-        </TBody>
-      </Table>
+          </THead>
+          <TBody>
+            {orders.map((order) => (
+              <TR key={`${order.side}-${order.orderType}-${order.priority}`}>
+                <TD>
+                  <Badge variant={order.side === "BUY" ? "gold" : "muted"}>{order.side}</Badge>
+                </TD>
+                <TD>{order.orderType}</TD>
+                <TD>{formatCurrency(order.price)}</TD>
+                <TD>{formatNumber(order.quantity, 0)}</TD>
+                <TD>{formatCurrency(order.amount)}</TD>
+                <TD className="max-w-md text-muted-foreground">{order.reason}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </div>
     </div>
   );
 }

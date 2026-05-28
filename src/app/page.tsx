@@ -1,16 +1,17 @@
+"use client";
+
 import { ArrowUpRight, CircleDollarSign, Gauge, Wallet } from "lucide-react";
 import { ReverseModeWarning } from "@/components/reverse-mode-warning";
 import { StatusCard } from "@/components/status-card";
 import { StrategySummaryCard } from "@/components/strategy-summary-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { generateNormalDailyPlan } from "@/lib/calculations";
-import { mockStrategy } from "@/lib/mock-data";
+import { useGoldbitStore } from "@/lib/local-store";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 export default function DashboardPage() {
-  const plan = generateNormalDailyPlan(mockStrategy);
-  const totalStatus = mockStrategy.cashBalance + mockStrategy.quantity * mockStrategy.averagePrice;
+  const { strategy, plan } = useGoldbitStore();
+  const totalStatus = strategy.cashBalance + strategy.quantity * strategy.averagePrice;
   const primaryAction = plan.buyOrders[0]?.reason ?? plan.sellOrders[0]?.reason ?? "Review current loop.";
 
   return (
@@ -22,19 +23,19 @@ export default function DashboardPage() {
           <p className="mt-2 text-muted-foreground">Mine gains, loop by loop.</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <span className="flex items-center gap-2 text-sm text-zinc-300"><Gauge className="h-4 w-4 text-amber-200" /> {mockStrategy.division}-division</span>
+          <span className="flex items-center gap-2 text-sm text-zinc-300"><Gauge className="h-4 w-4 text-amber-200" /> {strategy.division}-division</span>
           <span className="flex items-center gap-2 text-sm text-zinc-300"><Wallet className="h-4 w-4 text-amber-200" /> Manual tracking</span>
           <span className="flex items-center gap-2 text-sm text-zinc-300"><CircleDollarSign className="h-4 w-4 text-amber-200" /> SOXL only</span>
         </div>
       </section>
 
-      <StrategySummaryCard strategy={mockStrategy} />
+      <StrategySummaryCard strategy={strategy} />
       <ReverseModeWarning warnings={plan.warnings} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatusCard title="T Value" value={formatNumber(mockStrategy.tValue, 4)} detail={`Phase: ${plan.phase}`} />
-        <StatusCard title="Average Price" value={formatCurrency(mockStrategy.averagePrice)} detail="Current weighted average" />
-        <StatusCard title="Cash Reserve" value={formatCurrency(mockStrategy.cashBalance)} detail="Available manual budget" />
+        <StatusCard title="T Value" value={formatNumber(strategy.tValue, 4)} detail={`Phase: ${plan.phase}`} />
+        <StatusCard title="Average Price" value={formatCurrency(strategy.averagePrice)} detail="Current weighted average" />
+        <StatusCard title="Cash Reserve" value={formatCurrency(strategy.cashBalance)} detail="Available manual budget" />
         <StatusCard title="Total Status" value={formatCurrency(totalStatus)} detail="Cash plus position at average price" />
       </section>
 

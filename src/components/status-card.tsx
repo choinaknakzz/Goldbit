@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function StatusCard({
@@ -7,7 +8,7 @@ export function StatusCard({
 }: {
   title: string;
   value: string;
-  detail?: string;
+  detail?: ReactNode;
 }) {
   return (
     <Card>

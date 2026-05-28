@@ -1,5 +1,6 @@
 import type {
   DailyPlan,
+  DailyTEventInput,
   Division,
   NormalTEvent,
   PlannedOrder,
@@ -10,6 +11,12 @@ import type {
 
 const round = (value: number, digits = 2) => Number(value.toFixed(digits));
 const today = () => new Date().toISOString().slice(0, 10);
+const FIRST_BUY_LOC_BUFFER = 0.12;
+
+function getBuyQuantity(amount: number, price: number | null | undefined) {
+  if (!price || price <= 0) return null;
+  return Math.floor(amount / price);
+}
 
 export function getSoxlStarRate(tValue: number, division: Division): number {
   return division === 20 ? (20 - 2 * tValue) / 100 : (20 - tValue) / 100;
@@ -25,6 +32,10 @@ export function getStarPrice(
 
 export function getBuyPrice(starPrice: number): number {
   return round(starPrice - 0.01);
+}
+
+export function getFirstBuyLocPrice(previousClose: number): number {
+  return round(previousClose * (1 + FIRST_BUY_LOC_BUFFER));
 }
 
 export function getSoxlLimitSellPrice(averagePrice: number): number {
@@ -127,6 +138,7 @@ function warningForReverse(tValue: number, division: Division): string[] {
 
 export function generateNormalDailyPlan(
   strategyConfig: StrategyConfig,
+  previousClose?: number,
 ): DailyPlan {
   const phase = getNormalPhase(
     strategyConfig.tValue,
@@ -150,13 +162,18 @@ export function generateNormalDailyPlan(
   const sellOrders: PlannedOrder[] = [];
 
   if (phase === "FIRST_BUY") {
+    const firstBuyPrice = previousClose
+      ? getFirstBuyLocPrice(previousClose)
+      : null;
     buyOrders.push({
       side: "BUY",
       orderType: "LOC",
-      price: null,
-      quantity: null,
+      price: firstBuyPrice,
+      quantity: getBuyQuantity(dailyBuyAmount, firstBuyPrice),
       amount: dailyBuyAmount,
-      reason: "First buy: enter a LOC price above the previous close manually.",
+      reason: previousClose
+        ? "First buy LOC plan at 12% above previous close."
+        : "First buy: enter previous close to calculate LOC price.",
       priority: 1,
     });
   } else if (phase === "FIRST_HALF" && starPrice) {
@@ -165,7 +182,7 @@ export function generateNormalDailyPlan(
         side: "BUY",
         orderType: "LOC",
         price: getBuyPrice(starPrice),
-        quantity: null,
+        quantity: getBuyQuantity(round(dailyBuyAmount / 2), getBuyPrice(starPrice)),
         amount: round(dailyBuyAmount / 2),
         reason: "Half of one-turn budget at the star buy point.",
         priority: 1,
@@ -174,7 +191,7 @@ export function generateNormalDailyPlan(
         side: "BUY",
         orderType: "LOC",
         price: strategyConfig.averagePrice,
-        quantity: null,
+        quantity: getBuyQuantity(round(dailyBuyAmount / 2), strategyConfig.averagePrice),
         amount: round(dailyBuyAmount / 2),
         reason: "Half of one-turn budget at average price.",
         priority: 2,
@@ -185,7 +202,7 @@ export function generateNormalDailyPlan(
       side: "BUY",
       orderType: "LOC",
       price: getBuyPrice(starPrice),
-      quantity: null,
+      quantity: getBuyQuantity(dailyBuyAmount, getBuyPrice(starPrice)),
       amount: dailyBuyAmount,
       reason: "Full one-turn budget at the star buy point.",
       priority: 1,
@@ -227,6 +244,7 @@ export function generateNormalDailyPlan(
     cashBalance: strategyConfig.cashBalance,
     quantity: strategyConfig.quantity,
     starRate: getSoxlStarRate(strategyConfig.tValue, strategyConfig.division),
+    previousClose,
     starPrice,
     buyPrice: starPrice ? getBuyPrice(starPrice) : undefined,
     sellPrice: starPrice,
@@ -269,7 +287,10 @@ export function generateReverseDailyPlan(
           side: "BUY",
           orderType: "LOC",
           price: round(getReverseStarPrice(lastFiveCloses) - 0.01),
-          quantity: null,
+          quantity: getBuyQuantity(
+            getReverseBuyAmount(strategyConfig.cashBalance),
+            round(getReverseStarPrice(lastFiveCloses) - 0.01),
+          ),
           amount: getReverseBuyAmount(strategyConfig.cashBalance),
           reason: "Quarter buy below reverse star price.",
           priority: 1,
@@ -315,22 +336,34 @@ export function applyTradeToStrategy(
     : quantityAfter > 0
       ? strategyConfig.averagePrice
       : 0;
+  return {
+    ...strategyConfig,
+    cashBalance: round(cashAfter),
+    quantity: quantityAfter,
+    averagePrice: averagePriceAfter,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function applyDailyTEventToStrategy(
+  strategyConfig: StrategyConfig,
+  event: DailyTEventInput,
+): StrategyConfig {
   let tValue = strategyConfig.tValue;
-  if ("normalTEvent" in trade && trade.normalTEvent) {
-    tValue = applyNormalTChange(strategyConfig.tValue, trade.normalTEvent);
+
+  if (event.mode === "NORMAL" && event.normalTEvent) {
+    tValue = applyNormalTChange(strategyConfig.tValue, event.normalTEvent);
   }
-  if ("reverseTEvent" in trade && trade.reverseTEvent) {
+
+  if (event.mode === "REVERSE" && event.reverseTEvent) {
     tValue =
-      trade.reverseTEvent === "SELL"
+      event.reverseTEvent === "SELL"
         ? applyReverseSellT(strategyConfig.tValue, strategyConfig.division)
         : applyReverseBuyT(strategyConfig.tValue, strategyConfig.division);
   }
 
   return {
     ...strategyConfig,
-    cashBalance: round(cashAfter),
-    quantity: quantityAfter,
-    averagePrice: averagePriceAfter,
     tValue,
     mode: shouldEnterReverseMode(tValue, strategyConfig.division)
       ? "REVERSE"

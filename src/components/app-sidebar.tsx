@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { BarChart3, ClipboardList, Home, Settings, TrendingUp } from "lucide-react";
+import { BarChart3, BookOpenText, ClipboardList, Home, Settings, TrendingUp } from "lucide-react";
 
-const navItems = [
+export const navItems = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/today", label: "Today", icon: ClipboardList },
   { href: "/trades", label: "Trades", icon: TrendingUp },
   { href: "/history", label: "History", icon: BarChart3 },
+  { href: "/logic", label: "Logic", icon: BookOpenText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -1,0 +1,162 @@
+"use client";
+
+import { type FormEvent, useMemo, useState } from "react";
+import { Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input, Label, Select, Textarea } from "@/components/ui/form";
+import {
+  applyNormalTChange,
+  applyReverseBuyT,
+  applyReverseSellT,
+} from "@/lib/calculations";
+import { formatNumber } from "@/lib/utils";
+import type { DailyTEventInput, NormalTEvent, StrategyConfig, StrategyMode } from "@/lib/types";
+
+const normalEvents: Array<{ value: NormalTEvent; label: string }> = [
+  { value: "FULL_BUY", label: "Full buy: T + 1" },
+  { value: "HALF_BUY", label: "Half buy: T + 0.5" },
+  { value: "QUARTER_SELL", label: "Quarter sell: T x 0.75" },
+  { value: "LIMIT_SELL_AND_FULL_LOC_BUY", label: "Limit sell + full LOC buy" },
+  { value: "LIMIT_SELL_AND_HALF_LOC_BUY", label: "Limit sell + half LOC buy" },
+];
+
+export function DailyTEventForm({
+  strategy,
+  onAddDailyTEvent,
+}: {
+  strategy: StrategyConfig;
+  onAddDailyTEvent: (input: DailyTEventInput) => void;
+}) {
+  const [input, setInput] = useState<DailyTEventInput>({
+    date: new Date().toISOString().slice(0, 10),
+    mode: strategy.mode,
+    memo: "",
+  });
+
+  const previewT = useMemo(() => {
+    if (input.mode === "NORMAL" && input.normalTEvent) {
+      return applyNormalTChange(strategy.tValue, input.normalTEvent);
+    }
+    if (input.mode === "REVERSE" && input.reverseTEvent) {
+      return input.reverseTEvent === "SELL"
+        ? applyReverseSellT(strategy.tValue, strategy.division)
+        : applyReverseBuyT(strategy.tValue, strategy.division);
+    }
+    return strategy.tValue;
+  }, [input, strategy]);
+
+  const hasEvent =
+    (input.mode === "NORMAL" && Boolean(input.normalTEvent)) ||
+    (input.mode === "REVERSE" && Boolean(input.reverseTEvent));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Daily T Update</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="grid gap-4 xl:grid-cols-6"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            if (!hasEvent) return;
+            onAddDailyTEvent(input);
+            setInput({
+              date: new Date().toISOString().slice(0, 10),
+              mode: strategy.mode,
+              memo: "",
+            });
+          }}
+        >
+          <div>
+            <Label>Date</Label>
+            <Input
+              type="date"
+              value={input.date}
+              onChange={(event) => setInput({ ...input, date: event.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Mode</Label>
+            <Select
+              value={input.mode}
+              onChange={(event) =>
+                setInput({
+                  ...input,
+                  mode: event.target.value as StrategyMode,
+                  normalTEvent: undefined,
+                  reverseTEvent: undefined,
+                })
+              }
+            >
+              <option value="NORMAL">NORMAL</option>
+              <option value="REVERSE">REVERSE</option>
+            </Select>
+          </div>
+          {input.mode === "NORMAL" ? (
+            <div className="xl:col-span-2">
+              <Label>Normal Daily Result</Label>
+              <Select
+                value={input.normalTEvent ?? ""}
+                onChange={(event) =>
+                  setInput({
+                    ...input,
+                    normalTEvent: event.target.value as NormalTEvent,
+                    reverseTEvent: undefined,
+                  })
+                }
+              >
+                <option value="">Select result</option>
+                {normalEvents.map((event) => (
+                  <option key={event.value} value={event.value}>
+                    {event.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : (
+            <div className="xl:col-span-2">
+              <Label>Reverse Daily Result</Label>
+              <Select
+                value={input.reverseTEvent ?? ""}
+                onChange={(event) =>
+                  setInput({
+                    ...input,
+                    reverseTEvent: event.target.value as "SELL" | "BUY",
+                    normalTEvent: undefined,
+                  })
+                }
+              >
+                <option value="">Select result</option>
+                <option value="SELL">Reverse sell</option>
+                <option value="BUY">Reverse buy</option>
+              </Select>
+            </div>
+          )}
+          <div className="xl:col-span-2">
+            <Label>Memo</Label>
+            <Textarea
+              value={input.memo}
+              onChange={(event) => setInput({ ...input, memo: event.target.value })}
+            />
+          </div>
+          <div className="rounded-lg border border-border bg-white/[0.03] p-4 xl:col-span-6">
+            <p className="mb-2 text-sm font-medium text-amber-100">T Preview</p>
+            <p className="text-sm text-muted-foreground">
+              Current T {formatNumber(strategy.tValue, 4)} to{" "}
+              <span className="font-semibold text-foreground">{formatNumber(previewT, 4)}</span>
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Use one Daily T Update per date after all buy and sell fills for that date are known.
+            </p>
+          </div>
+          <Button className="xl:col-span-2" type="submit" disabled={!hasEvent}>
+            <Save className="h-4 w-4" />
+            Save T Update
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}

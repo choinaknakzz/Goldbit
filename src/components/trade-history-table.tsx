@@ -15,11 +15,18 @@ export function TradeHistoryTable({ trades }: { trades: Trade[] }) {
             <TH>Price</TH>
             <TH>Qty</TH>
             <TH>Amount</TH>
-            <TH>T</TH>
+            <TH>Fee</TH>
             <TH>Reason</TH>
           </TR>
         </THead>
         <TBody>
+          {trades.length === 0 ? (
+            <TR>
+              <TD colSpan={8} className="text-center text-muted-foreground">
+                No trades yet. All saved trades will appear here on one page.
+              </TD>
+            </TR>
+          ) : null}
           {trades.map((trade) => (
             <TR key={trade.id}>
               <TD>{trade.tradedAt}</TD>
@@ -28,7 +35,7 @@ export function TradeHistoryTable({ trades }: { trades: Trade[] }) {
               <TD>{formatCurrency(trade.price)}</TD>
               <TD>{formatNumber(trade.quantity, 0)}</TD>
               <TD>{formatCurrency(trade.amount)}</TD>
-              <TD>{formatNumber(trade.tAfter, 4)}</TD>
+              <TD>{formatCurrency(trade.fee)}</TD>
               <TD className="text-muted-foreground">{trade.reason}</TD>
             </TR>
           ))}

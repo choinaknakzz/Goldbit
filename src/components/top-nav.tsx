@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { navItems } from "@/components/app-sidebar";
 import { Badge } from "@/components/ui/badge";
 
 export function TopNav() {
@@ -10,6 +12,21 @@ export function TopNav() {
         </div>
         <Badge variant="gold">Manual orders only</Badge>
       </div>
+      <nav className="mt-4 flex flex-wrap gap-2 lg:hidden">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex shrink-0 items-center gap-2 rounded-md border border-border bg-white/[0.03] px-3 py-2 text-sm font-medium text-zinc-300 transition hover:border-amber-300/50 hover:text-amber-100"
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
     </header>
   );
 }

@@ -1,4 +1,4 @@
-import type { StrategyConfig, Trade } from "./types";
+import type { CloseRecord, StrategyConfig, Trade } from "./types";
 
 export const mockStrategy: StrategyConfig = {
   id: "strategy-soxl-v1",
@@ -14,6 +14,24 @@ export const mockStrategy: StrategyConfig = {
   createdAt: "2026-05-01T00:00:00.000Z",
   updatedAt: "2026-05-28T00:00:00.000Z",
 };
+
+export const emptyStrategy: StrategyConfig = {
+  id: "strategy-soxl-v1",
+  name: "GoldOrbit SOXL Loop",
+  symbol: "SOXL",
+  division: 40,
+  initialCapital: 20000,
+  cashBalance: 20000,
+  averagePrice: 0,
+  quantity: 0,
+  tValue: 0,
+  mode: "NORMAL",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+export const emptyLastFiveCloses = [0, 0, 0, 0, 0];
+export const emptyCloseRecords: CloseRecord[] = [];
 
 export const mockLastFiveCloses = [39.2, 38.7, 40.1, 39.6, 40.4];
 

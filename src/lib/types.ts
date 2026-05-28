@@ -10,6 +10,12 @@ export type NormalTEvent =
   | "LIMIT_SELL_AND_FULL_LOC_BUY"
   | "LIMIT_SELL_AND_HALF_LOC_BUY";
 
+export interface CloseRecord {
+  date: string;
+  close: number;
+  source?: string;
+}
+
 export type DailyPhase =
   | "FIRST_BUY"
   | "FIRST_HALF"
@@ -54,6 +60,7 @@ export interface DailyPlan {
   quantity: number;
   starRate?: number;
   starPrice?: number;
+  previousClose?: number;
   buyPrice?: number;
   sellPrice?: number;
   limitSellPrice?: number;
@@ -94,6 +101,18 @@ export interface TradeInput {
   reason: string;
   tradedAt: string;
   memo?: string;
+}
+
+export interface DailyTEventInput {
+  date: string;
+  mode: StrategyMode;
   normalTEvent?: NormalTEvent;
   reverseTEvent?: "SELL" | "BUY";
+  memo?: string;
+}
+
+export interface DailyTEvent extends DailyTEventInput {
+  id: string;
+  tBefore: number;
+  tAfter: number;
 }
