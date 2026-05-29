@@ -26,7 +26,7 @@ export function PlannedOrdersTable({ orders }: { orders: PlannedOrder[] }) {
         <span className="text-muted-foreground">Estimated Total</span>
         <span className="font-semibold text-amber-100">{formatCurrency(totalAmount)}</span>
       </div>
-      <div className="overflow-hidden rounded-lg border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <Table>
           <THead>
             <TR>

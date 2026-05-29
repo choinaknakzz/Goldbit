@@ -81,14 +81,8 @@ function normalizeCloseRecords(
   return initialState.closeRecords;
 }
 
-function readState(): GoldbitLocalState {
-  if (typeof window === "undefined") return initialState;
-
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) return initialState;
-
+function normalizeState(parsed: Partial<GoldbitLocalState>): GoldbitLocalState {
   try {
-    const parsed = JSON.parse(raw) as Partial<GoldbitLocalState>;
     const closeRecords = normalizeCloseRecords(parsed);
     const latestFiveCloses = getLatestFiveCloses(closeRecords);
     return {
@@ -119,8 +113,39 @@ function readState(): GoldbitLocalState {
   }
 }
 
-function writeState(state: GoldbitLocalState) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function readLocalState(): GoldbitLocalState {
+  if (typeof window === "undefined") return initialState;
+
+  const raw = window.localStorage.getItem(STORAGE_KEY);
+  if (!raw) return initialState;
+
+  try {
+    return normalizeState(JSON.parse(raw) as Partial<GoldbitLocalState>);
+  } catch {
+    return initialState;
+  }
+}
+
+async function readServerState(): Promise<GoldbitLocalState | null> {
+  const response = await fetch("/api/state", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to read saved Goldbit state.");
+  const payload = (await response.json()) as {
+    state: Partial<GoldbitLocalState> | null;
+  };
+
+  return payload.state ? normalizeState(payload.state) : null;
+}
+
+async function writeState(state: GoldbitLocalState) {
+  const response = await fetch("/api/state", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to save Goldbit state.");
+  }
 }
 
 function getRealizedPnl(trades: Trade[]) {
@@ -286,15 +311,41 @@ export function useGoldbitStore() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-    window.localStorage.removeItem(PREVIOUS_STORAGE_KEY);
-    setState(readState());
-    setIsLoaded(true);
+    const loadState = async () => {
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      window.localStorage.removeItem(PREVIOUS_STORAGE_KEY);
+
+      try {
+        const serverState = await readServerState();
+        if (serverState) {
+          setState(serverState);
+          setIsLoaded(true);
+          return;
+        }
+
+        const hasLocalState = Boolean(window.localStorage.getItem(STORAGE_KEY));
+        const localState = readLocalState();
+        setState(localState);
+        setIsLoaded(true);
+
+        if (hasLocalState) {
+          await writeState(localState);
+        }
+      } catch (error) {
+        console.error(error);
+        setState(readLocalState());
+        setIsLoaded(true);
+      }
+    };
+
+    void loadState();
   }, []);
 
   const persist = (nextState: GoldbitLocalState) => {
     setState(nextState);
-    writeState(nextState);
+    void writeState(nextState).catch((error) => {
+      console.error(error);
+    });
   };
 
   const updateStrategy = (

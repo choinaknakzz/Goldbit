@@ -9,7 +9,7 @@ function getEventLabel(event: DailyTEvent) {
 
 export function TEventHistoryTable({ events }: { events: DailyTEvent[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
         <THead>
           <TR>

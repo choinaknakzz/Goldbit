@@ -7,42 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum SymbolCode {
-  SOXL
-}
-
-enum Division {
-  D20
-  D40
-}
-
-enum StrategyMode {
-  NORMAL
-  REVERSE
-}
-
-enum TradeType {
-  BUY
-  SELL
-}
-
-enum OrderType {
-  LOC
-  MOC
-  LIMIT
-}
-
 model StrategyConfig {
   id               String       @id @default(cuid())
   name             String
-  symbol           SymbolCode   @default(SOXL)
-  division         Division
+  symbol           String       @default("SOXL")
+  division         Int
   initialCapital   Float
   cashBalance      Float
   averagePrice     Float
   quantity         Int
   tValue           Float
-  mode             StrategyMode @default(NORMAL)
+  mode             String       @default("NORMAL")
   reverseStartedAt DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
@@ -53,8 +28,8 @@ model Trade {
   id                 String       @id @default(cuid())
   strategyId         String
   strategy           StrategyConfig @relation(fields: [strategyId], references: [id], onDelete: Cascade)
-  type               TradeType
-  orderType          OrderType
+  type               String
+  orderType          String
   price              Float
   quantity           Int
   amount             Float
@@ -67,11 +42,18 @@ model Trade {
   quantityAfter      Int
   averagePriceBefore Float
   averagePriceAfter  Float
-  mode               StrategyMode
+  mode               String
   reason             String
   tradedAt           DateTime
   memo               String?
   createdAt          DateTime     @default(now())
 
   @@index([strategyId, tradedAt])
+}
+
+model AppState {
+  id        String   @id
+  data      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

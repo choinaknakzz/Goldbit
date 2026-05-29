@@ -5,7 +5,7 @@ import type { Trade } from "@/lib/types";
 
 export function TradeHistoryTable({ trades }: { trades: Trade[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
         <THead>
           <TR>

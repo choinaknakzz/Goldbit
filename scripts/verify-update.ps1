@@ -5,6 +5,17 @@ $root = Split-Path -Parent $PSScriptRoot
 $port = 7777
 $pages = @("/", "/today", "/trades", "/report", "/history", "/logic", "/settings")
 
+function Invoke-GoldbitCommand {
+  param([string[]] $Command)
+
+  $executable = $Command[0]
+  $arguments = @($Command | Select-Object -Skip 1)
+  & $executable @arguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "Command failed: $($Command -join ' ')"
+  }
+}
+
 function Stop-GoldbitDevServer {
   foreach ($candidatePort in @(3000, $port)) {
     Get-NetTCPConnection -LocalPort $candidatePort -State Listen -ErrorAction SilentlyContinue |
@@ -34,17 +45,17 @@ function Wait-ForGoldbit {
 Push-Location $root
 try {
   Write-Host "Running lint..."
-  npm.cmd run lint
+  Invoke-GoldbitCommand @("npm.cmd", "run", "lint")
 
   Write-Host "Running tests..."
-  npm.cmd run test:run
+  Invoke-GoldbitCommand @("npm.cmd", "run", "test:run")
 
   Write-Host "Stopping dev server and clearing Next.js cache..."
   Stop-GoldbitDevServer
   Remove-Item -Path (Join-Path $root ".next") -Recurse -Force -ErrorAction SilentlyContinue
 
   Write-Host "Running production build from a clean cache..."
-  npm.cmd run build
+  Invoke-GoldbitCommand @("npm.cmd", "run", "build")
 
   Write-Host "Starting clean dev server for page smoke checks..."
   Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm.cmd run dev" -WorkingDirectory $root -WindowStyle Hidden

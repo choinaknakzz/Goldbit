@@ -39,6 +39,32 @@ npm run dev
 
 Open `http://localhost:7777`.
 
+For phone access through Tailscale, use:
+
+```bash
+npm run dev:tailnet
+```
+
+Then follow [docs/tailscale.md](docs/tailscale.md).
+
+Current personal remote access pattern:
+
+- PC Tailscale machine name: `goldbit`
+- Phone browser: Chrome app
+- Phone URL: `http://goldbit:7777`
+- Tailscale is used instead of public port forwarding.
+- Windows Firewall allows inbound TCP `7777` from Tailscale CGNAT
+  `100.64.0.0/10`.
+- Phone data entry and app state updates have been verified through this path.
+
+Goldbit v2 uses local SQLite state storage through Prisma. Create `.env`
+from `.env.example` before running locally:
+
+```bash
+cp .env.example .env
+npm run prisma:generate
+```
+
 ## Test
 
 ```bash
@@ -69,7 +95,7 @@ After code updates, run the full local verification routine:
 npm run verify:update
 ```
 
-This runs lint, tests, a clean production build, clears the Next.js cache, restarts the local dev server, and smoke-checks the main pages for server/app errors.
+This runs lint, tests, a clean production build, clears the Next.js cache, restarts the local dev server, and smoke-checks the main pages for server/app errors. If the Prisma schema changes, run `npm run prisma:generate` before verification.
 
 If the local page looks broken after a code change, restart from a clean Next.js cache:
 

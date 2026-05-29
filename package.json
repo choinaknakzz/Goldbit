@@ -4,14 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 7777",
+    "dev:tailnet": "next dev -p 7777 -H 0.0.0.0",
     "dev:clean": "powershell -ExecutionPolicy Bypass -File scripts/dev-clean.ps1",
     "build": "next build",
     "start": "next start -p 7777",
+    "start:tailnet": "next start -p 7777 -H 0.0.0.0",
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
     "verify:update": "powershell -ExecutionPolicy Bypass -File scripts/verify-update.ps1",
     "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
