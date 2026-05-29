@@ -116,3 +116,41 @@ export interface DailyTEvent extends DailyTEventInput {
   tBefore: number;
   tAfter: number;
 }
+
+export interface CycleDailySnapshot {
+  date: string;
+  tradeCount: number;
+  buyAmount: number;
+  sellAmount: number;
+  fee: number;
+  tValue: number;
+  cashBalance: number;
+  quantity: number;
+  averagePrice: number;
+  totalAssets: number;
+}
+
+export interface CycleArchive {
+  id: string;
+  name: string;
+  startedAt: string;
+  endedAt: string;
+  tradeStartDate: string;
+  tradeEndDate: string;
+  initialCapital: number;
+  finalCashBalance: number;
+  finalAveragePrice: number;
+  finalQuantity: number;
+  finalTValue: number;
+  finalTotalAssets: number;
+  realizedPnl: number;
+  assetChange: number;
+  tradeCount: number;
+  buyCount: number;
+  sellCount: number;
+  trades: Trade[];
+  tEvents: DailyTEvent[];
+  closeRecords: CloseRecord[];
+  dailySnapshots: CycleDailySnapshot[];
+  archivedAt: string;
+}

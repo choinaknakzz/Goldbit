@@ -2,11 +2,14 @@ $ErrorActionPreference = "Stop"
 
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 $root = Split-Path -Parent $PSScriptRoot
-$pages = @("/", "/today", "/trades", "/history", "/logic", "/settings")
+$port = 7777
+$pages = @("/", "/today", "/trades", "/report", "/history", "/logic", "/settings")
 
 function Stop-GoldbitDevServer {
-  Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue |
-    ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+  foreach ($candidatePort in @(3000, $port)) {
+    Get-NetTCPConnection -LocalPort $candidatePort -State Listen -ErrorAction SilentlyContinue |
+      ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+  }
 }
 
 function Wait-ForGoldbit {
@@ -14,18 +17,18 @@ function Wait-ForGoldbit {
   do {
     Start-Sleep -Seconds 1
     try {
-      $response = Invoke-WebRequest -Uri "http://localhost:3000/history" -UseBasicParsing -TimeoutSec 5
+      $response = Invoke-WebRequest -Uri "http://localhost:$port/history" -UseBasicParsing -TimeoutSec 5
       if ($response.StatusCode -eq 200) {
         return
       }
     } catch {
       if ((Get-Date) -gt $deadline) {
-        throw "Dev server did not become ready on http://localhost:3000"
+        throw "Dev server did not become ready on http://localhost:$port"
       }
     }
   } while ((Get-Date) -le $deadline)
 
-  throw "Dev server did not become ready on http://localhost:3000"
+  throw "Dev server did not become ready on http://localhost:$port"
 }
 
 Push-Location $root
@@ -48,7 +51,7 @@ try {
   Wait-ForGoldbit
 
   foreach ($page in $pages) {
-    $url = "http://localhost:3000$page"
+    $url = "http://localhost:$port$page"
     Write-Host "Checking $url..."
     $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15
     if ($response.StatusCode -ne 200) {
@@ -59,7 +62,7 @@ try {
     }
   }
 
-  Write-Host "Update verification passed. Goldbit is clean at http://localhost:3000"
+  Write-Host "Update verification passed. Goldbit is clean at http://localhost:$port"
 } finally {
   Pop-Location
 }

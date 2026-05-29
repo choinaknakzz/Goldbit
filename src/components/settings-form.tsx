@@ -202,7 +202,7 @@ export function SettingsForm({
               onClick={onReset}
             >
               <RotateCcw className="h-4 w-4" />
-              Reset Data
+              End Cycle &amp; Reset
             </Button>
           </div>
         </form>

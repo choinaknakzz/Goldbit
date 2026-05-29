@@ -3,13 +3,17 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { PlannedOrder } from "@/lib/types";
 
+function getEstimatedOrderAmount(order: PlannedOrder) {
+  if (typeof order.price === "number" && typeof order.quantity === "number") {
+    return order.price * order.quantity;
+  }
+
+  return order.amount ?? null;
+}
+
 export function PlannedOrdersTable({ orders }: { orders: PlannedOrder[] }) {
   const totalAmount = orders.reduce((sum, order) => {
-    if (order.price && order.quantity) {
-      return sum + order.price * order.quantity;
-    }
-
-    return sum + (order.amount ?? 0);
+    return sum + (getEstimatedOrderAmount(order) ?? 0);
   }, 0);
 
   if (orders.length === 0) {
@@ -30,7 +34,7 @@ export function PlannedOrdersTable({ orders }: { orders: PlannedOrder[] }) {
               <TH>Type</TH>
               <TH>Price</TH>
               <TH>Qty</TH>
-              <TH>Amount</TH>
+              <TH>Est. Amount</TH>
               <TH>Reason</TH>
             </TR>
           </THead>
@@ -43,7 +47,7 @@ export function PlannedOrdersTable({ orders }: { orders: PlannedOrder[] }) {
                 <TD>{order.orderType}</TD>
                 <TD>{formatCurrency(order.price)}</TD>
                 <TD>{formatNumber(order.quantity, 0)}</TD>
-                <TD>{formatCurrency(order.amount)}</TD>
+                <TD>{formatCurrency(getEstimatedOrderAmount(order))}</TD>
                 <TD className="max-w-md text-muted-foreground">{order.reason}</TD>
               </TR>
             ))}

@@ -37,7 +37,7 @@ npm run prisma:generate
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open `http://localhost:7777`.
 
 ## Test
 
@@ -132,7 +132,8 @@ Reverse mode:
 - `/` Dashboard: overall state, Today&apos;s Action, reverse warning
 - `/today` Today: planned LOC, MOC, and LIMIT order tables
 - `/trades` Trades: manual fill input and trade history
-- `/history` History: T, average price, cash, quantity charts
+- `/report` Report: current-cycle T, average price, cash, quantity, and asset charts
+- `/history` History: archived completed cycles after reset/end-cycle
 - `/settings` Settings: local strategy baseline and recent closes
 
 ## Roadmap

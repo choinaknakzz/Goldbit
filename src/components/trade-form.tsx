@@ -65,6 +65,9 @@ export function TradeForm({
   }, [feeRatePercent]);
 
   const hasFillInput = input.price > 0 && input.quantity > 0;
+  const hasValidSellQuantity =
+    input.type !== "SELL" || input.quantity <= strategy.quantity;
+  const canSubmit = hasFillInput && hasValidSellQuantity;
   const fillAmount = input.price * input.quantity;
   const preview = useMemo(
     () => (hasFillInput ? applyTradeToStrategy(strategy, input) : strategy),
@@ -99,7 +102,7 @@ export function TradeForm({
           className="grid gap-4 xl:grid-cols-6"
             onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
-            if (!hasFillInput) return;
+            if (!canSubmit) return;
             onAddTrade(input);
             setInput(createEmptyTradeInput());
             setPriceInput("");
@@ -148,9 +151,16 @@ export function TradeForm({
             <Input
               type="number"
               step="1"
+              max={input.type === "SELL" ? strategy.quantity : undefined}
               value={quantityInput}
               onChange={(event) => updateQuantity(event.target.value)}
             />
+            {!hasValidSellQuantity ? (
+              <p className="mt-1 text-xs text-red-200">
+                Sell quantity cannot exceed current holding{" "}
+                {formatNumber(strategy.quantity, 0)}.
+              </p>
+            ) : null}
           </div>
           <div>
             <Label>Fee</Label>
@@ -194,7 +204,7 @@ export function TradeForm({
               in Daily T Update below.
             </p>
           </div>
-          <Button className="xl:col-span-2" type="submit" disabled={!hasFillInput}>
+          <Button className="xl:col-span-2" type="submit" disabled={!canSubmit}>
             <Save className="h-4 w-4" />
             Add Trade
           </Button>

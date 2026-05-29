@@ -1,88 +1,164 @@
 "use client";
 
-import { MetricChart } from "@/components/metric-chart";
-import { TradeHistoryTable } from "@/components/trade-history-table";
+import { useState } from "react";
+import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { TradeHistoryTable } from "@/components/trade-history-table";
 import { useGoldbitStore } from "@/lib/local-store";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 
 export default function HistoryPage() {
-  const { strategy, trades, previousClose } = useGoldbitStore();
-  const chartSeries =
-    trades.length >= 2
-      ? [...trades]
-          .sort((left, right) => {
-            const dateOrder = left.tradedAt.localeCompare(right.tradedAt);
-            return dateOrder === 0 ? left.id.localeCompare(right.id) : dateOrder;
-          })
-          .map((trade, index) => ({
-            date: `${trade.tradedAt} #${index + 1}`,
-            tValue: trade.tAfter,
-            averagePrice: trade.averagePriceAfter,
-            cashBalance: trade.cashAfter,
-            quantity: trade.quantityAfter,
-            totalAssets: trade.cashAfter + trade.quantityAfter * trade.price,
-          }))
-      : [
-          {
-            date: "Now",
-            tValue: strategy.tValue,
-            averagePrice: strategy.averagePrice,
-            cashBalance: strategy.cashBalance,
-            quantity: strategy.quantity,
-            totalAssets:
-              strategy.cashBalance +
-              strategy.quantity *
-                (previousClose > 0 ? previousClose : strategy.averagePrice),
-          },
-        ];
-  const realizedPnl = trades.reduce((sum, trade) => {
-    if (trade.type !== "SELL") return sum;
-    return (
-      sum +
-      (trade.price - trade.averagePriceBefore) * trade.quantity -
-      trade.fee
+  const { cycleArchives, deleteCycleArchive } = useGoldbitStore();
+  const [openCycleIds, setOpenCycleIds] = useState<string[]>([]);
+  const toggleCycle = (cycleId: string) => {
+    setOpenCycleIds((currentIds) =>
+      currentIds.includes(cycleId)
+        ? currentIds.filter((id) => id !== cycleId)
+        : [...currentIds, cycleId],
     );
-  }, 0);
-  const markPrice = previousClose > 0 ? previousClose : strategy.averagePrice;
-  const unrealizedPnl =
-    strategy.quantity > 0 && strategy.averagePrice > 0
-      ? (markPrice - strategy.averagePrice) * strategy.quantity
-      : 0;
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold">History</h2>
-        <p className="mt-1 text-muted-foreground">Track T value, average price, cash reserve, and position size.</p>
+        <p className="mt-1 text-muted-foreground">
+          Review completed GoldOrbit cycles archived when data is reset.
+        </p>
       </div>
-      <section className="grid gap-4 md:grid-cols-2">
+
+      {cycleArchives.length === 0 ? (
         <Card>
-          <CardHeader><CardTitle>Realized PnL</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-amber-100">{formatCurrency(realizedPnl)}</p>
-            <p className="mt-2 text-sm text-muted-foreground">Closed sell fills minus their recorded average cost and fee.</p>
+          <CardContent className="p-6 text-sm text-muted-foreground">
+            No completed cycles yet. Use Settings reset after a cycle ends to archive
+            the current trades, T updates, closes, and asset path.
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader><CardTitle>Unrealized PnL</CardTitle></CardHeader>
-          <CardContent>
-            <p className="text-3xl font-semibold text-amber-100">{formatCurrency(unrealizedPnl)}</p>
-            <p className="mt-2 text-sm text-muted-foreground">Open position marked against latest saved close.</p>
-          </CardContent>
-        </Card>
-      </section>
-      <section className="grid gap-4 xl:grid-cols-2">
-        <MetricChart title="T Value" dataKey="tValue" data={chartSeries} />
-        <MetricChart title="Total Assets" dataKey="totalAssets" data={chartSeries} valueType="currency" />
-        <MetricChart title="Average Price" dataKey="averagePrice" data={chartSeries} valueType="currency" />
-        <MetricChart title="Cash Reserve" dataKey="cashBalance" data={chartSeries} valueType="currency" />
-        <MetricChart title="Quantity" dataKey="quantity" data={chartSeries} />
-      </section>
-      <Card>
-        <CardHeader><CardTitle>Fill Timeline</CardTitle></CardHeader>
-        <CardContent><TradeHistoryTable trades={trades} /></CardContent>
-      </Card>
+      ) : null}
+
+      <div className="space-y-5">
+        {cycleArchives.map((cycle) => {
+          const isOpen = openCycleIds.includes(cycle.id);
+
+          return (
+            <Card key={cycle.id}>
+              <CardHeader>
+              <div className="flex flex-col justify-between gap-2 xl:flex-row xl:items-end">
+                <div>
+                  <CardTitle>{cycle.name}</CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Cycle period by trade dates: {cycle.tradeStartDate} to{" "}
+                    {cycle.tradeEndDate}
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Archived {cycle.archivedAt.slice(0, 10)}
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-md border border-border bg-white/[0.03] p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Final Assets</p>
+                  <p className="mt-2 text-xl font-semibold text-amber-100">
+                    {formatCurrency(cycle.finalTotalAssets)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-white/[0.03] p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Asset Change</p>
+                  <p className="mt-2 text-xl font-semibold text-amber-100">
+                    {formatCurrency(cycle.assetChange)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-white/[0.03] p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Realized PnL</p>
+                  <p className="mt-2 text-xl font-semibold text-amber-100">
+                    {formatCurrency(cycle.realizedPnl)}
+                  </p>
+                </div>
+                <div className="rounded-md border border-border bg-white/[0.03] p-3">
+                  <p className="text-xs uppercase text-muted-foreground">Trades</p>
+                  <p className="mt-2 text-xl font-semibold text-amber-100">
+                    {cycle.tradeCount} total
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    BUY {cycle.buyCount} / SELL {cycle.sellCount}
+                  </p>
+                </div>
+              </section>
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  className="bg-zinc-800 text-amber-100 hover:bg-zinc-700"
+                  onClick={() => toggleCycle(cycle.id)}
+                >
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  Detail
+                </Button>
+                <Button
+                  className="border-red-300/30 bg-red-500/15 text-red-100 hover:bg-red-500/25"
+                  onClick={() => {
+                    const confirmed = window.confirm(
+                      "Delete this archived cycle? This cannot be undone.",
+                    );
+                    if (confirmed) deleteCycleArchive(cycle.id);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
+
+              {isOpen ? (
+                <>
+                  <div className="overflow-hidden rounded-lg border border-border">
+                    <Table>
+                      <THead>
+                        <TR>
+                          <TH>Date</TH>
+                          <TH>Trades</TH>
+                          <TH>Buy</TH>
+                          <TH>Sell</TH>
+                          <TH>Fee</TH>
+                          <TH>T</TH>
+                          <TH>Assets</TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {cycle.dailySnapshots.map((snapshot) => (
+                          <TR key={`${cycle.id}-${snapshot.date}`}>
+                            <TD>{snapshot.date}</TD>
+                            <TD>{snapshot.tradeCount}</TD>
+                            <TD>{formatCurrency(snapshot.buyAmount)}</TD>
+                            <TD>{formatCurrency(snapshot.sellAmount)}</TD>
+                            <TD>{formatCurrency(snapshot.fee)}</TD>
+                            <TD>{formatNumber(snapshot.tValue, 4)}</TD>
+                            <TD>{formatCurrency(snapshot.totalAssets)}</TD>
+                          </TR>
+                        ))}
+                      </TBody>
+                    </Table>
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-sm font-medium text-amber-100">
+                      Cycle Trades
+                    </p>
+                    <TradeHistoryTable trades={cycle.trades} />
+                  </div>
+                </>
+              ) : null}
+            </CardContent>
+          </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -98,11 +98,23 @@ export function getReverseFirstSellQuantity(
 }
 
 export function getReverseStarPrice(lastFiveCloses: number[]): number {
-  if (lastFiveCloses.length !== 5) {
-    throw new Error("Reverse star price requires exactly five closes.");
+  const validCloses = lastFiveCloses.filter(
+    (close) => Number.isFinite(close) && close > 0,
+  );
+
+  if (validCloses.length !== 5) {
+    throw new Error("Reverse star price requires exactly five positive closes.");
   }
+
   return round(
-    lastFiveCloses.reduce((sum, close) => sum + close, 0) / lastFiveCloses.length,
+    validCloses.reduce((sum, close) => sum + close, 0) / validCloses.length,
+  );
+}
+
+function hasValidReverseCloses(lastFiveCloses: number[]) {
+  return (
+    lastFiveCloses.length === 5 &&
+    lastFiveCloses.every((close) => Number.isFinite(close) && close > 0)
   );
 }
 
@@ -263,6 +275,10 @@ export function generateReverseDailyPlan(
   lastFiveCloses: number[],
   isFirstReverseDay: boolean,
 ): DailyPlan {
+  const hasReverseStarPrice = hasValidReverseCloses(lastFiveCloses);
+  const reverseStarPrice = hasReverseStarPrice
+    ? getReverseStarPrice(lastFiveCloses)
+    : undefined;
   const sellQuantity = getReverseFirstSellQuantity(
     strategyConfig.quantity,
     strategyConfig.division,
@@ -271,25 +287,27 @@ export function generateReverseDailyPlan(
     {
       side: "SELL",
       orderType: isFirstReverseDay ? "MOC" : "LOC",
-      price: isFirstReverseDay ? null : getReverseStarPrice(lastFiveCloses),
+      price: isFirstReverseDay ? null : reverseStarPrice ?? null,
       quantity: sellQuantity,
       amount: null,
       reason: isFirstReverseDay
         ? "Reverse first day MOC sell only."
-        : "Reverse LOC sell above the five-close star price.",
+        : hasReverseStarPrice
+          ? "Reverse LOC sell above the five-close star price."
+          : "Enter five valid closes to calculate reverse LOC sell price.",
       priority: 1,
     },
   ];
-  const buyOrders: PlannedOrder[] = isFirstReverseDay
+  const buyOrders: PlannedOrder[] = isFirstReverseDay || !reverseStarPrice
     ? []
     : [
         {
           side: "BUY",
           orderType: "LOC",
-          price: round(getReverseStarPrice(lastFiveCloses) - 0.01),
+          price: round(reverseStarPrice - 0.01),
           quantity: getBuyQuantity(
             getReverseBuyAmount(strategyConfig.cashBalance),
-            round(getReverseStarPrice(lastFiveCloses) - 0.01),
+            round(reverseStarPrice - 0.01),
           ),
           amount: getReverseBuyAmount(strategyConfig.cashBalance),
           reason: "Quarter buy below reverse star price.",
@@ -298,7 +316,7 @@ export function generateReverseDailyPlan(
       ];
   const starPrice = isFirstReverseDay
     ? undefined
-    : getReverseStarPrice(lastFiveCloses);
+    : reverseStarPrice;
 
   return {
     date: today(),
@@ -314,7 +332,12 @@ export function generateReverseDailyPlan(
     sellPrice: starPrice,
     buyOrders,
     sellOrders,
-    warnings: ["Reverse Mode Alert: no automated order will be placed."],
+    warnings: [
+      "Reverse Mode Alert: no automated order will be placed.",
+      ...(isFirstReverseDay || hasReverseStarPrice
+        ? []
+        : ["Enter five valid recent closes before using reverse active orders."]),
+    ],
   };
 }
 

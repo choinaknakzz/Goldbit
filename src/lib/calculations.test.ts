@@ -72,6 +72,12 @@ describe("SOXL infinite buying calculations", () => {
     expect(getReverseStarPrice([45, 46, 47, 48, 49])).toBe(47);
   });
 
+  it("rejects invalid reverse star closes", () => {
+    expect(() => getReverseStarPrice([0, 46, 47, 48, 49])).toThrow(
+      "five positive closes",
+    );
+  });
+
   it("applies reverse-mode T changes", () => {
     expect(applyReverseSellT(39.5, 40)).toBeCloseTo(37.525);
     expect(applyReverseBuyT(37.525, 40)).toBeCloseTo(38.14375);

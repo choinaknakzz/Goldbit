@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 7777",
     "dev:clean": "powershell -ExecutionPolicy Bypass -File scripts/dev-clean.ps1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 7777",
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
