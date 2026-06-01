@@ -12,9 +12,11 @@ import {
   getSoxlLimitSellPrice,
   getSoxlStarRate,
   getStarPrice,
+  generateNormalDailyPlan,
   shouldEnterReverseMode,
   shouldExitReverseMode,
 } from "./calculations";
+import type { StrategyConfig } from "./types";
 
 describe("SOXL infinite buying calculations", () => {
   it("calculates SOXL 20-division star rate", () => {
@@ -39,6 +41,85 @@ describe("SOXL infinite buying calculations", () => {
 
   it("calculates first buy LOC price from previous close", () => {
     expect(getFirstBuyLocPrice(40)).toBe(44.8);
+  });
+
+  it("sizes first buy quantity from previous close, not the buffered LOC price", () => {
+    const strategy: StrategyConfig = {
+      id: "strategy-test",
+      name: "Test",
+      symbol: "SOXL",
+      division: 20,
+      initialCapital: 10000,
+      cashBalance: 10000,
+      averagePrice: 0,
+      quantity: 0,
+      tValue: 0,
+      mode: "NORMAL",
+      createdAt: "2026-05-29T00:00:00.000Z",
+      updatedAt: "2026-05-29T00:00:00.000Z",
+    };
+
+    const plan = generateNormalDailyPlan(strategy, 224.63);
+
+    expect(plan.buyOrders[0]).toMatchObject({
+      price: 251.59,
+      quantity: 2,
+      amount: 449.26,
+    });
+  });
+
+  it("splits first-half buy orders around one daily budget", () => {
+    const strategy: StrategyConfig = {
+      id: "strategy-test",
+      name: "Test",
+      symbol: "SOXL",
+      division: 20,
+      initialCapital: 10000,
+      cashBalance: 9500,
+      averagePrice: 224.34,
+      quantity: 1,
+      tValue: 1,
+      mode: "NORMAL",
+      createdAt: "2026-05-29T00:00:00.000Z",
+      updatedAt: "2026-05-29T00:00:00.000Z",
+    };
+
+    const plan = generateNormalDailyPlan(strategy, 224.63);
+    const totalBuyAmount = plan.buyOrders.reduce(
+      (sum, order) => sum + (order.amount ?? 0),
+      0,
+    );
+
+    expect(getDailyBuyAmount(9500, 1, 20)).toBe(500);
+    expect(plan.buyOrders).toHaveLength(2);
+    expect(plan.buyOrders[0].quantity).toBe(1);
+    expect(plan.buyOrders[1].quantity).toBe(1);
+    expect(totalBuyAmount).toBeCloseTo(489.05);
+  });
+
+  it("omits zero-quantity quarter sell orders", () => {
+    const strategy: StrategyConfig = {
+      id: "strategy-test",
+      name: "Test",
+      symbol: "SOXL",
+      division: 20,
+      initialCapital: 10000,
+      cashBalance: 9500,
+      averagePrice: 224.34,
+      quantity: 1,
+      tValue: 1,
+      mode: "NORMAL",
+      createdAt: "2026-05-29T00:00:00.000Z",
+      updatedAt: "2026-05-29T00:00:00.000Z",
+    };
+
+    const plan = generateNormalDailyPlan(strategy, 224.63);
+
+    expect(plan.sellOrders).toHaveLength(1);
+    expect(plan.sellOrders[0]).toMatchObject({
+      orderType: "LIMIT",
+      quantity: 1,
+    });
   });
 
   it("applies normal-mode T changes", () => {

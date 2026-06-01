@@ -18,6 +18,34 @@ function getBuyQuantity(amount: number, price: number | null | undefined) {
   return Math.floor(amount / price);
 }
 
+function getPlannedAmount(
+  price: number | null | undefined,
+  quantity: number | null,
+) {
+  if (!price || !quantity) return null;
+  return round(price * quantity);
+}
+
+function getFirstHalfBuyQuantities(
+  dailyBuyAmount: number,
+  starBuyPrice: number,
+  averagePrice: number,
+) {
+  let starQuantity = getBuyQuantity(round(dailyBuyAmount / 2), starBuyPrice) ?? 0;
+  let averageQuantity =
+    getBuyQuantity(round(dailyBuyAmount / 2), averagePrice) ?? 0;
+
+  if (
+    (starQuantity === 0 || averageQuantity === 0) &&
+    starBuyPrice + averagePrice <= dailyBuyAmount
+  ) {
+    starQuantity = Math.max(starQuantity, 1);
+    averageQuantity = Math.max(averageQuantity, 1);
+  }
+
+  return { starQuantity, averageQuantity };
+}
+
 export function getSoxlStarRate(tValue: number, division: Division): number {
   return division === 20 ? (20 - 2 * tValue) / 100 : (20 - tValue) / 100;
 }
@@ -177,25 +205,34 @@ export function generateNormalDailyPlan(
     const firstBuyPrice = previousClose
       ? getFirstBuyLocPrice(previousClose)
       : null;
+    const firstBuyQuantity = previousClose
+      ? getBuyQuantity(dailyBuyAmount, previousClose)
+      : null;
     buyOrders.push({
       side: "BUY",
       orderType: "LOC",
       price: firstBuyPrice,
-      quantity: getBuyQuantity(dailyBuyAmount, firstBuyPrice),
-      amount: dailyBuyAmount,
+      quantity: firstBuyQuantity,
+      amount: getPlannedAmount(previousClose, firstBuyQuantity),
       reason: previousClose
-        ? "First buy LOC plan at 12% above previous close."
+        ? "First buy LOC limit is 12% above previous close; quantity uses previous close budget sizing."
         : "First buy: enter previous close to calculate LOC price.",
       priority: 1,
     });
   } else if (phase === "FIRST_HALF" && starPrice) {
+    const starBuyPrice = getBuyPrice(starPrice);
+    const { starQuantity, averageQuantity } = getFirstHalfBuyQuantities(
+      dailyBuyAmount,
+      starBuyPrice,
+      strategyConfig.averagePrice,
+    );
     buyOrders.push(
       {
         side: "BUY",
         orderType: "LOC",
-        price: getBuyPrice(starPrice),
-        quantity: getBuyQuantity(round(dailyBuyAmount / 2), getBuyPrice(starPrice)),
-        amount: round(dailyBuyAmount / 2),
+        price: starBuyPrice,
+        quantity: starQuantity,
+        amount: getPlannedAmount(starBuyPrice, starQuantity),
         reason: "Half of one-turn budget at the star buy point.",
         priority: 1,
       },
@@ -203,47 +240,53 @@ export function generateNormalDailyPlan(
         side: "BUY",
         orderType: "LOC",
         price: strategyConfig.averagePrice,
-        quantity: getBuyQuantity(round(dailyBuyAmount / 2), strategyConfig.averagePrice),
-        amount: round(dailyBuyAmount / 2),
+        quantity: averageQuantity,
+        amount: getPlannedAmount(strategyConfig.averagePrice, averageQuantity),
         reason: "Half of one-turn budget at average price.",
         priority: 2,
       },
     );
   } else if (starPrice) {
+    const starBuyPrice = getBuyPrice(starPrice);
+    const starQuantity = getBuyQuantity(dailyBuyAmount, starBuyPrice);
     buyOrders.push({
       side: "BUY",
       orderType: "LOC",
-      price: getBuyPrice(starPrice),
-      quantity: getBuyQuantity(dailyBuyAmount, getBuyPrice(starPrice)),
-      amount: dailyBuyAmount,
+      price: starBuyPrice,
+      quantity: starQuantity,
+      amount: getPlannedAmount(starBuyPrice, starQuantity),
       reason: "Full one-turn budget at the star buy point.",
       priority: 1,
     });
   }
 
   if (strategyConfig.quantity > 0 && starPrice) {
-    sellOrders.push(
-      {
+    const quarterSellQuantity = getQuarterSellQuantity(strategyConfig.quantity);
+    const limitSellQuantity = strategyConfig.quantity - quarterSellQuantity;
+
+    if (quarterSellQuantity > 0) {
+      sellOrders.push({
         side: "SELL",
         orderType: "LOC",
         price: starPrice,
-        quantity: getQuarterSellQuantity(strategyConfig.quantity),
+        quantity: quarterSellQuantity,
         amount: null,
         reason: "Quarter sell at star price.",
         priority: 1,
-      },
-      {
+      });
+    }
+
+    if (limitSellQuantity > 0) {
+      sellOrders.push({
         side: "SELL",
         orderType: "LIMIT",
         price: getSoxlLimitSellPrice(strategyConfig.averagePrice),
-        quantity:
-          strategyConfig.quantity -
-          getQuarterSellQuantity(strategyConfig.quantity),
+        quantity: limitSellQuantity,
         amount: null,
         reason: "SOXL 20% target limit sell.",
         priority: 2,
-      },
-    );
+      });
+    }
   }
 
   return {

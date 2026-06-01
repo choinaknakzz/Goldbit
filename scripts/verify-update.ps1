@@ -55,10 +55,10 @@ try {
   Remove-Item -Path (Join-Path $root ".next") -Recurse -Force -ErrorAction SilentlyContinue
 
   Write-Host "Running production build from a clean cache..."
-  Invoke-GoldbitCommand @("npm.cmd", "run", "build")
+  Invoke-GoldbitCommand @("npm.cmd", "run", "next:build")
 
-  Write-Host "Starting clean dev server for page smoke checks..."
-  Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm.cmd run dev" -WorkingDirectory $root -WindowStyle Hidden
+  Write-Host "Starting clean tailnet dev server for page smoke checks..."
+  Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm.cmd run dev:tailnet" -WorkingDirectory $root -WindowStyle Hidden
   Wait-ForGoldbit
 
   foreach ($page in $pages) {

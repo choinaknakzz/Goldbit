@@ -6,7 +6,8 @@
     "dev": "next dev -p 7777",
     "dev:tailnet": "next dev -p 7777 -H 0.0.0.0",
     "dev:clean": "powershell -ExecutionPolicy Bypass -File scripts/dev-clean.ps1",
-    "build": "next build",
+    "build": "powershell -ExecutionPolicy Bypass -File scripts/build-clean.ps1",
+    "next:build": "next build",
     "start": "next start -p 7777",
     "start:tailnet": "next start -p 7777 -H 0.0.0.0",
     "lint": "next lint",
@@ -26,7 +27,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.13.3",
-    "tailwind-merge": "^2.5.5"
+    "tailwind-merge": "^2.5.5",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.1.0",

@@ -99,8 +99,8 @@ export function TradeForm({
       </CardHeader>
       <CardContent>
         <form
-          className="grid gap-4 xl:grid-cols-6"
-            onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
+          onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             if (!canSubmit) return;
             onAddTrade(input);
@@ -177,21 +177,21 @@ export function TradeForm({
               onChange={(event) => setInput({ ...input, tradedAt: event.target.value })}
             />
           </div>
-          <div className="xl:col-span-3">
+          <div className="md:col-span-2 xl:col-span-3">
             <Label>Reason</Label>
             <Input
               value={input.reason}
               onChange={(event) => setInput({ ...input, reason: event.target.value })}
             />
           </div>
-          <div className="xl:col-span-3">
+          <div className="md:col-span-2 xl:col-span-3">
             <Label>Memo</Label>
             <Textarea
               value={input.memo}
               onChange={(event) => setInput({ ...input, memo: event.target.value })}
             />
           </div>
-          <div className="rounded-lg border border-border bg-white/[0.03] p-4 xl:col-span-6">
+          <div className="rounded-lg border border-border bg-white/[0.03] p-4 md:col-span-2 xl:col-span-6">
             <p className="mb-3 text-sm font-medium text-amber-100">Post-fill Preview</p>
             <div className="grid gap-3 sm:grid-cols-4">
               <span>Cash: {formatCurrency(preview.cashBalance)}</span>
@@ -204,7 +204,7 @@ export function TradeForm({
               in Daily T Update below.
             </p>
           </div>
-          <Button className="xl:col-span-2" type="submit" disabled={!canSubmit}>
+          <Button className="md:w-fit xl:col-span-2" type="submit" disabled={!canSubmit}>
             <Save className="h-4 w-4" />
             Add Trade
           </Button>

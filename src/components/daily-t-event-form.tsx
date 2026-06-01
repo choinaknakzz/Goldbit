@@ -57,7 +57,7 @@ export function DailyTEventForm({
       </CardHeader>
       <CardContent>
         <form
-          className="grid gap-4 xl:grid-cols-6"
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
           onSubmit={(event: FormEvent<HTMLFormElement>) => {
             event.preventDefault();
             if (!hasEvent) return;
@@ -95,7 +95,7 @@ export function DailyTEventForm({
             </Select>
           </div>
           {input.mode === "NORMAL" ? (
-            <div className="xl:col-span-2">
+            <div className="md:col-span-2 xl:col-span-2">
               <Label>Normal Daily Result</Label>
               <Select
                 value={input.normalTEvent ?? ""}
@@ -116,7 +116,7 @@ export function DailyTEventForm({
               </Select>
             </div>
           ) : (
-            <div className="xl:col-span-2">
+            <div className="md:col-span-2 xl:col-span-2">
               <Label>Reverse Daily Result</Label>
               <Select
                 value={input.reverseTEvent ?? ""}
@@ -134,14 +134,14 @@ export function DailyTEventForm({
               </Select>
             </div>
           )}
-          <div className="xl:col-span-2">
+          <div className="md:col-span-2 xl:col-span-2">
             <Label>Memo</Label>
             <Textarea
               value={input.memo}
               onChange={(event) => setInput({ ...input, memo: event.target.value })}
             />
           </div>
-          <div className="rounded-lg border border-border bg-white/[0.03] p-4 xl:col-span-6">
+          <div className="rounded-lg border border-border bg-white/[0.03] p-4 md:col-span-2 xl:col-span-6">
             <p className="mb-2 text-sm font-medium text-amber-100">T Preview</p>
             <p className="text-sm text-muted-foreground">
               Current T {formatNumber(strategy.tValue, 4)} to{" "}
@@ -151,7 +151,7 @@ export function DailyTEventForm({
               Use one Daily T Update per date after all buy and sell fills for that date are known.
             </p>
           </div>
-          <Button className="xl:col-span-2" type="submit" disabled={!hasEvent}>
+          <Button className="md:w-fit xl:col-span-2" type="submit" disabled={!hasEvent}>
             <Save className="h-4 w-4" />
             Save T Update
           </Button>

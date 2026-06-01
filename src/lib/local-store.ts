@@ -3,11 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   applyDailyTEventToStrategy,
-  applyTradeToStrategy,
   generateNormalDailyPlan,
   generateReverseDailyPlan,
 } from "@/lib/calculations";
-import { emptyCloseRecords, emptyLastFiveCloses, emptyStrategy } from "@/lib/mock-data";
+import {
+  getLatestFiveCloses,
+  initialGoldbitState,
+  normalizeGoldbitState,
+  type GoldbitLocalState,
+} from "@/lib/goldbit-state";
 import type {
   CloseRecord,
   CycleArchive,
@@ -24,105 +28,16 @@ const STORAGE_KEY = "goldbit.local.v3";
 const PREVIOUS_STORAGE_KEY = "goldbit.local.v2";
 const LEGACY_STORAGE_KEY = "goldbit.local.v1";
 
-export interface GoldbitLocalState {
-  strategy: StrategyConfig;
-  trades: Trade[];
-  tEvents: DailyTEvent[];
-  lastFiveCloses: number[];
-  closeRecords: CloseRecord[];
-  previousClose: number;
-  feeRatePercent: number;
-  cycleArchives: CycleArchive[];
-}
-
-const initialState: GoldbitLocalState = {
-  strategy: emptyStrategy,
-  trades: [],
-  tEvents: [],
-  lastFiveCloses: emptyLastFiveCloses,
-  closeRecords: emptyCloseRecords,
-  previousClose: 0,
-  feeRatePercent: 0,
-  cycleArchives: [],
-};
-
-function getLatestFiveCloses(records: CloseRecord[]) {
-  return [...records]
-    .sort((left, right) => left.date.localeCompare(right.date))
-    .slice(-5)
-    .map((record) => record.close);
-}
-
-function normalizeCloseRecords(
-  parsed: Partial<GoldbitLocalState>,
-): CloseRecord[] {
-  if (Array.isArray(parsed.closeRecords)) {
-    return parsed.closeRecords
-      .filter(
-        (record): record is CloseRecord =>
-          typeof record?.date === "string" &&
-          typeof record?.close === "number" &&
-          Number.isFinite(record.close),
-      )
-      .sort((left, right) => left.date.localeCompare(right.date));
-  }
-
-  if (Array.isArray(parsed.lastFiveCloses)) {
-    return parsed.lastFiveCloses
-      .map(Number)
-      .filter((close) => Number.isFinite(close) && close > 0)
-      .map((close, index) => ({
-        date: `legacy-${index + 1}`,
-        close,
-        source: "Legacy",
-      }));
-  }
-
-  return initialState.closeRecords;
-}
-
-function normalizeState(parsed: Partial<GoldbitLocalState>): GoldbitLocalState {
-  try {
-    const closeRecords = normalizeCloseRecords(parsed);
-    const latestFiveCloses = getLatestFiveCloses(closeRecords);
-    return {
-      strategy: { ...initialState.strategy, ...parsed.strategy },
-      trades: Array.isArray(parsed.trades) ? parsed.trades : initialState.trades,
-      tEvents: Array.isArray(parsed.tEvents)
-        ? parsed.tEvents
-        : initialState.tEvents,
-      lastFiveCloses:
-        latestFiveCloses.length > 0
-          ? latestFiveCloses
-          : initialState.lastFiveCloses,
-      closeRecords,
-      previousClose:
-        typeof parsed.previousClose === "number"
-          ? parsed.previousClose
-          : initialState.previousClose,
-      feeRatePercent:
-        typeof parsed.feeRatePercent === "number"
-          ? parsed.feeRatePercent
-          : initialState.feeRatePercent,
-      cycleArchives: Array.isArray(parsed.cycleArchives)
-        ? parsed.cycleArchives
-        : initialState.cycleArchives,
-    };
-  } catch {
-    return initialState;
-  }
-}
-
 function readLocalState(): GoldbitLocalState {
-  if (typeof window === "undefined") return initialState;
+  if (typeof window === "undefined") return initialGoldbitState;
 
   const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) return initialState;
+  if (!raw) return initialGoldbitState;
 
   try {
-    return normalizeState(JSON.parse(raw) as Partial<GoldbitLocalState>);
+    return normalizeGoldbitState(JSON.parse(raw) as Partial<GoldbitLocalState>);
   } catch {
-    return initialState;
+    return initialGoldbitState;
   }
 }
 
@@ -133,7 +48,7 @@ async function readServerState(): Promise<GoldbitLocalState | null> {
     state: Partial<GoldbitLocalState> | null;
   };
 
-  return payload.state ? normalizeState(payload.state) : null;
+  return payload.state ? normalizeGoldbitState(payload.state) : null;
 }
 
 async function writeState(state: GoldbitLocalState) {
@@ -146,6 +61,67 @@ async function writeState(state: GoldbitLocalState) {
   if (!response.ok) {
     throw new Error("Failed to save Goldbit state.");
   }
+}
+
+async function postTrade(input: TradeInput): Promise<GoldbitLocalState> {
+  const response = await fetch("/api/trades", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trade: input }),
+  });
+
+  const payload = (await response.json()) as {
+    state?: Partial<GoldbitLocalState>;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.state) {
+    throw new Error(payload.error ?? "Failed to add trade.");
+  }
+
+  return normalizeGoldbitState(payload.state);
+}
+
+async function postPendingTrade(rawText: string): Promise<GoldbitLocalState> {
+  const response = await fetch("/api/pending-trades", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rawText, source: "SCREENSHOT" }),
+  });
+
+  const payload = (await response.json()) as {
+    state?: Partial<GoldbitLocalState>;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.state) {
+    throw new Error(payload.error ?? "Failed to parse OCR trade.");
+  }
+
+  return normalizeGoldbitState(payload.state);
+}
+
+async function resolvePendingTrade(
+  pendingTradeId: string,
+  action: "confirm" | "reject",
+  trade?: TradeInput,
+): Promise<GoldbitLocalState> {
+  const response = await fetch(`/api/pending-trades/${pendingTradeId}/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: trade ? JSON.stringify({ trade }) : undefined,
+  });
+
+  const payload = (await response.json()) as {
+    state?: Partial<GoldbitLocalState>;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.state) {
+    throw new Error(payload.error ?? `Failed to ${action} pending trade.`);
+  }
+
+  return normalizeGoldbitState(payload.state);
 }
 
 function getRealizedPnl(trades: Trade[]) {
@@ -275,39 +251,8 @@ function createCycleArchive(state: GoldbitLocalState): CycleArchive | null {
   };
 }
 
-function createTradeRecord(
-  strategyBefore: StrategyConfig,
-  strategyAfter: StrategyConfig,
-  input: TradeInput,
-): Trade {
-  const amount = Number((input.price * input.quantity).toFixed(2));
-
-  return {
-    id: `trade-${Date.now()}`,
-    strategyId: strategyBefore.id,
-    type: input.type,
-    orderType: input.orderType,
-    price: input.price,
-    quantity: input.quantity,
-    amount,
-    fee: input.fee,
-    tBefore: strategyBefore.tValue,
-    tAfter: strategyAfter.tValue,
-    cashBefore: strategyBefore.cashBalance,
-    cashAfter: strategyAfter.cashBalance,
-    quantityBefore: strategyBefore.quantity,
-    quantityAfter: strategyAfter.quantity,
-    averagePriceBefore: strategyBefore.averagePrice,
-    averagePriceAfter: strategyAfter.averagePrice,
-    mode: strategyBefore.mode,
-    reason: input.reason,
-    tradedAt: input.tradedAt,
-    memo: input.memo,
-  };
-}
-
 export function useGoldbitStore() {
-  const [state, setState] = useState<GoldbitLocalState>(initialState);
+  const [state, setState] = useState<GoldbitLocalState>(initialGoldbitState);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -385,13 +330,35 @@ export function useGoldbitStore() {
   };
 
   const addTrade = (input: TradeInput) => {
-    const strategyAfter = applyTradeToStrategy(state.strategy, input);
-    const trade = createTradeRecord(state.strategy, strategyAfter, input);
-    persist({
-      ...state,
-      strategy: strategyAfter,
-      trades: [trade, ...state.trades],
-    });
+    void postTrade(input)
+      .then((nextState) => setState(nextState))
+      .catch((error) => {
+        console.error(error);
+      });
+  };
+
+  const addPendingTrade = (rawText: string) => {
+    void postPendingTrade(rawText)
+      .then((nextState) => setState(nextState))
+      .catch((error) => {
+        console.error(error);
+      });
+  };
+
+  const confirmPendingTrade = (pendingTradeId: string, trade?: TradeInput) => {
+    void resolvePendingTrade(pendingTradeId, "confirm", trade)
+      .then((nextState) => setState(nextState))
+      .catch((error) => {
+        console.error(error);
+      });
+  };
+
+  const rejectPendingTrade = (pendingTradeId: string) => {
+    void resolvePendingTrade(pendingTradeId, "reject")
+      .then((nextState) => setState(nextState))
+      .catch((error) => {
+        console.error(error);
+      });
   };
 
   const addDailyTEvent = (input: DailyTEventInput) => {
@@ -435,7 +402,7 @@ export function useGoldbitStore() {
   const resetState = () => {
     const archivedCycle = createCycleArchive(state);
     persist({
-      ...initialState,
+      ...initialGoldbitState,
       cycleArchives: archivedCycle
         ? [archivedCycle, ...state.cycleArchives]
         : state.cycleArchives,
@@ -469,6 +436,9 @@ export function useGoldbitStore() {
     updateStrategy,
     updateLatestClose,
     addTrade,
+    addPendingTrade,
+    confirmPendingTrade,
+    rejectPendingTrade,
     addDailyTEvent,
     resetState,
     deleteCycleArchive,

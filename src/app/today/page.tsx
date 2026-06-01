@@ -5,7 +5,7 @@ import { PlannedOrdersTable } from "@/components/planned-orders-table";
 import { ReverseModeWarning } from "@/components/reverse-mode-warning";
 import { StatusCard } from "@/components/status-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getFirstBuyLocPrice } from "@/lib/calculations";
+import { getDailyBuyAmount, getFirstBuyLocPrice } from "@/lib/calculations";
 import { useGoldbitStore } from "@/lib/local-store";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
@@ -15,6 +15,11 @@ export default function TodayPage() {
   const isFirstBuy = plan.phase === "FIRST_BUY";
   const firstBuyLocPrice =
     isFirstBuy && previousClose > 0 ? getFirstBuyLocPrice(previousClose) : undefined;
+  const dailyBuyBudget = getDailyBuyAmount(
+    strategy.cashBalance,
+    strategy.tValue,
+    strategy.division,
+  );
   const normalStarRateFormula =
     strategy.division === 20
       ? `(20 - 2 x ${formatNumber(plan.tValue, 4)})%`
@@ -72,7 +77,7 @@ export default function TodayPage() {
             />
             <StatusCard
               title="Buy Budget"
-              value={formatCurrency(plan.buyOrders[0]?.amount)}
+              value={formatCurrency(dailyBuyBudget)}
               detail="Cash divided by division"
             />
           </>
