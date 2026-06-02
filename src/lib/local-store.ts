@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  applyDailyTEventToStrategy,
   generateNormalDailyPlan,
   generateReverseDailyPlan,
 } from "@/lib/calculations";
 import {
+  applyDailyTEventInputToState,
   getLatestFiveCloses,
   initialGoldbitState,
   normalizeGoldbitState,
@@ -17,7 +17,7 @@ import type {
   CycleArchive,
   CycleDailySnapshot,
   DailyPlan,
-  DailyTEvent,
+  DailyPlanSnapshot,
   DailyTEventInput,
   StrategyConfig,
   Trade,
@@ -293,6 +293,37 @@ export function useGoldbitStore() {
     });
   };
 
+  const persistPlanSnapshot = (planSnapshot: DailyPlan) => {
+    const hasTradeForDate = state.trades.some(
+      (trade) => trade.tradedAt === planSnapshot.date,
+    );
+    const hasTEventForDate = state.tEvents.some(
+      (event) => event.date === planSnapshot.date,
+    );
+    const existingSnapshot = state.dailyPlanSnapshots.find(
+      (snapshot) => snapshot.date === planSnapshot.date,
+    );
+
+    if (hasTradeForDate || hasTEventForDate || existingSnapshot) return;
+
+    const now = new Date().toISOString();
+    const nextSnapshot: DailyPlanSnapshot = {
+      date: planSnapshot.date,
+      plan: planSnapshot,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const nextState = {
+      ...state,
+      dailyPlanSnapshots: [nextSnapshot, ...state.dailyPlanSnapshots],
+    };
+
+    setState(nextState);
+    void writeState(nextState).catch((error) => {
+      console.error(error);
+    });
+  };
+
   const updateStrategy = (
     strategy: StrategyConfig,
     closeRecords = state.closeRecords,
@@ -362,41 +393,7 @@ export function useGoldbitStore() {
   };
 
   const addDailyTEvent = (input: DailyTEventInput) => {
-    const existingEvents = state.tEvents.filter((event) => event.date !== input.date);
-    const baseT =
-      state.tEvents.length > 0
-        ? [...state.tEvents].sort((left, right) => left.date.localeCompare(right.date))[0]
-            .tBefore
-        : state.strategy.tValue;
-    const eventInputs = [
-      ...existingEvents,
-      {
-        ...input,
-        id: `t-event-${Date.now()}`,
-        tBefore: baseT,
-        tAfter: baseT,
-      },
-    ].sort((left, right) => left.date.localeCompare(right.date));
-
-    let replayStrategy = { ...state.strategy, tValue: baseT };
-    const replayedEvents: DailyTEvent[] = eventInputs.map((event) => {
-      const strategyAfter = applyDailyTEventToStrategy(replayStrategy, event);
-      const replayedEvent = {
-        ...event,
-        tBefore: replayStrategy.tValue,
-        tAfter: strategyAfter.tValue,
-      };
-      replayStrategy = strategyAfter;
-      return replayedEvent;
-    });
-
-    persist({
-      ...state,
-      strategy: replayStrategy,
-      tEvents: [...replayedEvents].sort((left, right) =>
-        right.date.localeCompare(left.date),
-      ),
-    });
+    persist(applyDailyTEventInputToState(state, input));
   };
 
   const resetState = () => {
@@ -428,6 +425,13 @@ export function useGoldbitStore() {
 
     return generateNormalDailyPlan(state.strategy, state.previousClose);
   }, [state]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    persistPlanSnapshot(plan);
+    // Snapshot only before the date has trades or T events; avoid replacing it later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, plan.date]);
 
   return {
     ...state,

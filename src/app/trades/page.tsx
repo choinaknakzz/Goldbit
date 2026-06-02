@@ -13,6 +13,7 @@ export default function TradesPage() {
     strategy,
     trades,
     tEvents,
+    dailyPlanSnapshots,
     pendingTrades,
     feeRatePercent,
     addTrade,
@@ -41,7 +42,12 @@ export default function TradesPage() {
         feeRatePercent={feeRatePercent}
         onAddTrade={addTrade}
       />
-      <DailyTEventForm strategy={strategy} onAddDailyTEvent={addDailyTEvent} />
+      <DailyTEventForm
+        strategy={strategy}
+        trades={trades}
+        dailyPlanSnapshots={dailyPlanSnapshots}
+        onAddDailyTEvent={addDailyTEvent}
+      />
       <Card>
         <CardHeader>
           <CardTitle>Trade History</CardTitle>

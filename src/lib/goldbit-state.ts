@@ -1,8 +1,11 @@
 import { emptyCloseRecords, emptyLastFiveCloses, emptyStrategy } from "@/lib/mock-data";
+import { applyDailyTEventToStrategy } from "@/lib/calculations";
 import type {
   CloseRecord,
   CycleArchive,
   DailyTEvent,
+  DailyTEventInput,
+  DailyPlanSnapshot,
   PendingTrade,
   StrategyConfig,
   Trade,
@@ -13,6 +16,7 @@ export interface GoldbitLocalState {
   strategy: StrategyConfig;
   trades: Trade[];
   tEvents: DailyTEvent[];
+  dailyPlanSnapshots: DailyPlanSnapshot[];
   lastFiveCloses: number[];
   closeRecords: CloseRecord[];
   previousClose: number;
@@ -25,6 +29,7 @@ export const initialGoldbitState: GoldbitLocalState = {
   strategy: emptyStrategy,
   trades: [],
   tEvents: [],
+  dailyPlanSnapshots: [],
   lastFiveCloses: emptyLastFiveCloses,
   closeRecords: emptyCloseRecords,
   previousClose: 0,
@@ -80,6 +85,9 @@ export function normalizeGoldbitState(
       tEvents: Array.isArray(parsed.tEvents)
         ? parsed.tEvents
         : initialGoldbitState.tEvents,
+      dailyPlanSnapshots: Array.isArray(parsed.dailyPlanSnapshots)
+        ? parsed.dailyPlanSnapshots
+        : initialGoldbitState.dailyPlanSnapshots,
       lastFiveCloses:
         latestFiveCloses.length > 0
           ? latestFiveCloses
@@ -133,5 +141,47 @@ export function createTradeRecord(
     reason: input.reason,
     tradedAt: input.tradedAt,
     memo: input.memo,
+  };
+}
+
+export function applyDailyTEventInputToState(
+  state: GoldbitLocalState,
+  input: DailyTEventInput,
+): GoldbitLocalState {
+  const existingEvents = state.tEvents.filter((event) => event.date !== input.date);
+  const baseT =
+    state.tEvents.length > 0
+      ? [...state.tEvents].sort((left, right) =>
+          left.date.localeCompare(right.date),
+        )[0].tBefore
+      : state.strategy.tValue;
+  const eventInputs = [
+    ...existingEvents,
+    {
+      ...input,
+      id: `t-event-${Date.now()}`,
+      tBefore: baseT,
+      tAfter: baseT,
+    },
+  ].sort((left, right) => left.date.localeCompare(right.date));
+
+  let replayStrategy = { ...state.strategy, tValue: baseT };
+  const replayedEvents: DailyTEvent[] = eventInputs.map((event) => {
+    const strategyAfter = applyDailyTEventToStrategy(replayStrategy, event);
+    const replayedEvent = {
+      ...event,
+      tBefore: replayStrategy.tValue,
+      tAfter: strategyAfter.tValue,
+    };
+    replayStrategy = strategyAfter;
+    return replayedEvent;
+  });
+
+  return {
+    ...state,
+    strategy: replayStrategy,
+    tEvents: [...replayedEvents].sort((left, right) =>
+      right.date.localeCompare(left.date),
+    ),
   };
 }

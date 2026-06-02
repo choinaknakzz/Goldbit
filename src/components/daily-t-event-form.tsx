@@ -9,9 +9,17 @@ import {
   applyNormalTChange,
   applyReverseBuyT,
   applyReverseSellT,
+  suggestDailyTEvent,
 } from "@/lib/calculations";
 import { formatNumber } from "@/lib/utils";
-import type { DailyTEventInput, NormalTEvent, StrategyConfig, StrategyMode } from "@/lib/types";
+import type {
+  DailyPlanSnapshot,
+  DailyTEventInput,
+  NormalTEvent,
+  StrategyConfig,
+  StrategyMode,
+  Trade,
+} from "@/lib/types";
 
 const normalEvents: Array<{ value: NormalTEvent; label: string }> = [
   { value: "FULL_BUY", label: "Full buy: T + 1" },
@@ -23,9 +31,13 @@ const normalEvents: Array<{ value: NormalTEvent; label: string }> = [
 
 export function DailyTEventForm({
   strategy,
+  trades,
+  dailyPlanSnapshots,
   onAddDailyTEvent,
 }: {
   strategy: StrategyConfig;
+  trades: Trade[];
+  dailyPlanSnapshots: DailyPlanSnapshot[];
   onAddDailyTEvent: (input: DailyTEventInput) => void;
 }) {
   const [input, setInput] = useState<DailyTEventInput>({
@@ -45,6 +57,13 @@ export function DailyTEventForm({
     }
     return strategy.tValue;
   }, [input, strategy]);
+  const planSnapshot = dailyPlanSnapshots.find(
+    (snapshot) => snapshot.date === input.date,
+  );
+  const suggestion = useMemo(
+    () => suggestDailyTEvent(strategy, planSnapshot, trades, input.date),
+    [strategy, planSnapshot, trades, input.date],
+  );
 
   const hasEvent =
     (input.mode === "NORMAL" && Boolean(input.normalTEvent)) ||
@@ -150,6 +169,44 @@ export function DailyTEventForm({
             <p className="mt-2 text-xs text-muted-foreground">
               Use one Daily T Update per date after all buy and sell fills for that date are known.
             </p>
+          </div>
+          <div className="rounded-lg border border-amber-300/20 bg-amber-300/5 p-4 md:col-span-2 xl:col-span-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-medium text-amber-100">
+                  Suggested T Update
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {suggestion.input?.normalTEvent ??
+                    suggestion.input?.reverseTEvent ??
+                    "No suggestion"}
+                  {suggestion.input ? (
+                    <span className="ml-2 text-xs">
+                      Confidence {formatNumber(suggestion.confidence * 100, 0)}%
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {suggestion.reason}
+                </p>
+                {suggestion.detectedSummary.length > 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {suggestion.detectedSummary.join(" / ")}
+                  </p>
+                ) : null}
+              </div>
+              <Button
+                className="shrink-0 md:w-fit"
+                disabled={!suggestion.input}
+                type="button"
+                onClick={() => {
+                  if (!suggestion.input) return;
+                  setInput(suggestion.input);
+                }}
+              >
+                Use Suggestion
+              </Button>
+            </div>
           </div>
           <Button className="md:w-fit xl:col-span-2" type="submit" disabled={!hasEvent}>
             <Save className="h-4 w-4" />

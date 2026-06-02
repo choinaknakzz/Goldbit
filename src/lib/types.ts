@@ -70,6 +70,20 @@ export interface DailyPlan {
   warnings: string[];
 }
 
+export interface DailyPlanSnapshot {
+  date: string;
+  plan: DailyPlan;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyTEventSuggestion {
+  input: DailyTEventInput | null;
+  confidence: number;
+  reason: string;
+  detectedSummary: string[];
+}
+
 export interface Trade {
   id: string;
   strategyId: string;

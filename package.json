@@ -14,6 +14,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "verify:update": "powershell -ExecutionPolicy Bypass -File scripts/verify-update.ps1",
+    "telegram:check": "node scripts/telegram-bot.mjs --check",
+    "telegram:poll": "node scripts/telegram-bot.mjs",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev"

@@ -13,10 +13,11 @@ import {
   getSoxlStarRate,
   getStarPrice,
   generateNormalDailyPlan,
+  suggestDailyTEvent,
   shouldEnterReverseMode,
   shouldExitReverseMode,
 } from "./calculations";
-import type { StrategyConfig } from "./types";
+import type { DailyPlanSnapshot, StrategyConfig, Trade } from "./types";
 
 describe("SOXL infinite buying calculations", () => {
   it("calculates SOXL 20-division star rate", () => {
@@ -120,6 +121,139 @@ describe("SOXL infinite buying calculations", () => {
       orderType: "LIMIT",
       quantity: 1,
     });
+  });
+
+  it("suggests half buy from saved plan when only one planned buy fills", () => {
+    const strategy: StrategyConfig = {
+      id: "strategy-test",
+      name: "Test",
+      symbol: "SOXL",
+      division: 20,
+      initialCapital: 10000,
+      cashBalance: 9500,
+      averagePrice: 224.34,
+      quantity: 1,
+      tValue: 1,
+      mode: "NORMAL",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    };
+    const plan = generateNormalDailyPlan(strategy, 224.63);
+    const snapshot: DailyPlanSnapshot = {
+      date: "2026-06-01",
+      plan: { ...plan, date: "2026-06-01" },
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    };
+    const trades: Trade[] = [
+      {
+        id: "trade-1",
+        strategyId: strategy.id,
+        type: "BUY",
+        orderType: "LOC",
+        price: 224.68,
+        quantity: 1,
+        amount: 224.68,
+        fee: 0.34,
+        tBefore: 1,
+        tAfter: 1,
+        cashBefore: 9500,
+        cashAfter: 9274.98,
+        quantityBefore: 1,
+        quantityAfter: 2,
+        averagePriceBefore: 224.34,
+        averagePriceAfter: 224.51,
+        mode: "NORMAL",
+        reason: "Filled average buy",
+        tradedAt: "2026-06-01",
+      },
+    ];
+
+    const suggestion = suggestDailyTEvent(
+      strategy,
+      snapshot,
+      trades,
+      "2026-06-01",
+    );
+
+    expect(suggestion.input?.normalTEvent).toBe("HALF_BUY");
+  });
+
+  it("suggests full buy from saved plan when planned buy amount fills", () => {
+    const strategy: StrategyConfig = {
+      id: "strategy-test",
+      name: "Test",
+      symbol: "SOXL",
+      division: 20,
+      initialCapital: 10000,
+      cashBalance: 9500,
+      averagePrice: 224.34,
+      quantity: 1,
+      tValue: 1,
+      mode: "NORMAL",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    };
+    const plan = generateNormalDailyPlan(strategy, 224.63);
+    const snapshot: DailyPlanSnapshot = {
+      date: "2026-06-01",
+      plan: { ...plan, date: "2026-06-01" },
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    };
+    const trades: Trade[] = [
+      {
+        id: "trade-1",
+        strategyId: strategy.id,
+        type: "BUY",
+        orderType: "LOC",
+        price: 265.11,
+        quantity: 1,
+        amount: 265.11,
+        fee: 0.4,
+        tBefore: 1,
+        tAfter: 1,
+        cashBefore: 9500,
+        cashAfter: 9234.49,
+        quantityBefore: 1,
+        quantityAfter: 2,
+        averagePriceBefore: 224.34,
+        averagePriceAfter: 244.93,
+        mode: "NORMAL",
+        reason: "Filled star buy",
+        tradedAt: "2026-06-01",
+      },
+      {
+        id: "trade-2",
+        strategyId: strategy.id,
+        type: "BUY",
+        orderType: "LOC",
+        price: 224.68,
+        quantity: 1,
+        amount: 224.68,
+        fee: 0.34,
+        tBefore: 1,
+        tAfter: 1,
+        cashBefore: 9234.49,
+        cashAfter: 9009.47,
+        quantityBefore: 2,
+        quantityAfter: 3,
+        averagePriceBefore: 244.93,
+        averagePriceAfter: 238.28,
+        mode: "NORMAL",
+        reason: "Filled average buy",
+        tradedAt: "2026-06-01",
+      },
+    ];
+
+    const suggestion = suggestDailyTEvent(
+      strategy,
+      snapshot,
+      trades,
+      "2026-06-01",
+    );
+
+    expect(suggestion.input?.normalTEvent).toBe("FULL_BUY");
   });
 
   it("applies normal-mode T changes", () => {

@@ -47,6 +47,67 @@ npm run dev:tailnet
 
 Then follow [docs/tailscale.md](docs/tailscale.md).
 
+## Telegram Bridge
+
+Goldbit v2 can receive Telegram messages through a local long-polling bridge.
+This is private-local integration: Telegram sends messages to the bot, the
+local PC polls Telegram, OCR/parses the content, and creates a Pending Trade in
+Goldbit with a post-fill preview. Reply `추가` to confirm the latest Telegram
+pending trade, or `취소` to reject it.
+
+Telegram supported flows:
+
+- `/today`: show Today Action Plan and save the plan snapshot for later T
+  recommendation.
+- Send broker fill screenshot/text: create Pending Trade and receive post-fill
+  preview.
+- `추가`: add the latest pending Telegram trade to Trades.
+- `취소`: reject the latest pending Telegram trade.
+- `/t`: recommend the Daily T update from the saved action plan and confirmed
+  trades.
+- `T추가`: apply the latest recommended Daily T update.
+
+Add these values to `.env`:
+
+```bash
+GOLDBIT_APP_URL="http://localhost:7777"
+TELEGRAM_BOT_TOKEN="<your-bot-token>"
+TELEGRAM_ALLOWED_CHAT_IDS=""
+TELEGRAM_POLL_TIMEOUT_SECONDS="25"
+```
+
+Check the bot connection:
+
+```bash
+npm run telegram:check
+```
+
+Start the bridge while Goldbit is running:
+
+```bash
+npm run telegram:poll
+```
+
+Recommended Telegram setup:
+
+- Send `/start` to the bot.
+- Copy the returned `Chat ID`.
+- Set `TELEGRAM_ALLOWED_CHAT_IDS="<chat-id>"` in `.env`.
+- Restart `npm run telegram:poll`.
+- Send a broker fill screenshot or OCR text.
+- Review the Telegram post-fill preview.
+- Reply `추가` to add it to Trades, or `취소` to reject it.
+- Send `/t` after the day's trades are confirmed.
+- Reply `T추가` to apply the recommended T update.
+- Open `/trades` to review the final record.
+
+Security notes:
+
+- Keep `TELEGRAM_BOT_TOKEN` out of git.
+- Do not expose Goldbit to the public internet.
+- Prefer Tailscale for phone access to the Goldbit web UI.
+- Rotate the bot token if it is ever shared outside your private environment.
+
 Current personal remote access pattern:
 
 - PC Tailscale machine name: `goldbit`

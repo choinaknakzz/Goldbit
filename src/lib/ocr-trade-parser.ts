@@ -12,12 +12,47 @@ export interface OcrTradeParseResult {
   notes: string[];
 }
 
+const KOREAN = {
+  buy: "\\uB9E4\\uC218|\\uAD6C\\uB9E4|\\uB9E4\\uC785",
+  sell: "\\uB9E4\\uB3C4|\\uD310\\uB9E4",
+  share: "\\uC8FC",
+  perShare: "\\uC8FC\\uB2F9",
+  quantity: "\\uC218\\uB7C9",
+  fillPrice: "\\uCCB4\\uACB0\\uAC00|\\uCCB4\\uACB0\\uB2E8\\uAC00",
+  price: "\\uAC00\\uACA9|\\uB2E8\\uAC00",
+  fee: "\\uC218\\uC218\\uB8CC",
+  partialFill: "\\uBD84\\uD560\\s*\\uCCB4\\uACB0\\s*\\uB0B4\\uC5ED",
+  orderQuantity: "\\uC8FC\\uBB38\\uC218\\uB7C9",
+  fillQuantity: "\\uCCB4\\uACB0\\uC218\\uB7C9",
+  orderPrice: "\\uC8FC\\uBB38\\uAC00\\uACA9",
+};
+
 function normalizeText(rawText: string) {
   return rawText.replace(/\s+/g, " ").trim();
 }
 
 function parseNumber(value: string) {
   return Number(value.replace(/,/g, ""));
+}
+
+function normalizeSoxlPrice(value: number) {
+  if (value <= 1000) return value;
+
+  const [integerPart, decimalPart] = value.toString().split(".");
+  for (let index = 1; index < integerPart.length; index += 1) {
+    const candidate = Number(
+      `${integerPart.slice(index)}${decimalPart ? `.${decimalPart}` : ""}`,
+    );
+    if (Number.isFinite(candidate) && candidate > 0 && candidate <= 1000) {
+      return candidate;
+    }
+  }
+
+  return value;
+}
+
+function getDefaultYear(defaultDate: string) {
+  return defaultDate.slice(0, 4) || new Date().getFullYear().toString();
 }
 
 function extractNumber(text: string, patterns: RegExp[]) {
@@ -33,26 +68,36 @@ function extractNumber(text: string, patterns: RegExp[]) {
 }
 
 function extractDate(text: string, defaultDate: string) {
-  const match = text.match(
-    /(20\d{2})\s*(?:[-./년])\s*(\d{1,2})\s*(?:[-./월])\s*(\d{1,2})/,
+  const fullDateMatch = text.match(
+    /(20\d{2})\s*(?:[-./\uB144])\s*(\d{1,2})\s*(?:[-./\uC6D4])\s*(\d{1,2})/,
   );
 
-  if (!match) return defaultDate;
+  if (fullDateMatch) {
+    const [, year, month, day] = fullDateMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
 
-  const [, year, month, day] = match;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const shortDateMatch = text.match(/(?:^|\s)(\d{1,2})\s*[./]\s*(\d{1,2})(?:\s|$)/);
+  if (shortDateMatch) {
+    const [, month, day] = shortDateMatch;
+    return `${getDefaultYear(defaultDate)}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return defaultDate;
 }
 
 function extractTradeType(text: string): TradeType | null {
-  if (/(매도|sell|sold)/i.test(text)) return "SELL";
-  if (/(매수|buy|bought|bot)/i.test(text)) return "BUY";
+  if (new RegExp(`(${KOREAN.sell}|sell|sold)`, "i").test(text)) return "SELL";
+  if (new RegExp(`(${KOREAN.buy}|buy|bought|bot)`, "i").test(text)) return "BUY";
   return null;
 }
 
 function extractOrderType(text: string, defaultOrderType: OrderType): OrderType {
   if (/\bMOC\b/i.test(text)) return "MOC";
   if (/\bLOC\b/i.test(text)) return "LOC";
-  if (/\bLIMIT\b|지정가/i.test(text)) return "LIMIT";
+  if (new RegExp("\\bLIMIT\\b|\\uC9C0\\uC815\\uAC00", "i").test(text)) {
+    return "LIMIT";
+  }
   return defaultOrderType;
 }
 
@@ -60,13 +105,70 @@ function calculateFee(price: number, quantity: number, feeRatePercent = 0) {
   return Number(((price * quantity * feeRatePercent) / 100).toFixed(2));
 }
 
+function createTrade(
+  trade: Omit<TradeInput, "fee">,
+  feeRatePercent: number | undefined,
+  explicitFee?: number | null,
+): TradeInput {
+  return {
+    ...trade,
+    fee: explicitFee ?? calculateFee(trade.price, trade.quantity, feeRatePercent),
+  };
+}
+
+function parseBrokerSummaryFill(
+  text: string,
+  options: OcrTradeParseOptions,
+): OcrTradeParseResult | null {
+  const tradeType = extractTradeType(text);
+  const quantity = extractNumber(text, [
+    new RegExp(`(?:${KOREAN.buy}|${KOREAN.sell})\\D*([\\d,]+)\\s*${KOREAN.share}`, "i"),
+    new RegExp(`([\\d,]+)\\s*${KOREAN.share}`, "i"),
+    /(?:qty|quantity|shares?)\D*([\d,]+)/i,
+  ]);
+  const rawPrice = extractNumber(text, [
+    new RegExp(`${KOREAN.perShare}\\D*\\$?\\s*([\\d,]+(?:\\.\\d+)?)`, "i"),
+    /\$\s*([\d,]+(?:\.\d+)?)/,
+    /(?:price)\D*([\d,]+(?:\.\d+)?)/i,
+  ]);
+  const price = rawPrice ? normalizeSoxlPrice(rawPrice) : null;
+
+  if (!tradeType || !quantity || !price) return null;
+
+  const defaultDate = options.defaultDate ?? new Date().toISOString().slice(0, 10);
+  const tradedAt = extractDate(text, defaultDate);
+  const notes =
+    rawPrice && rawPrice !== price
+      ? [`Price normalized from ${rawPrice} to ${price}.`]
+      : [];
+
+  return {
+    trade: createTrade(
+      {
+        type: tradeType,
+        orderType: extractOrderType(text, options.defaultOrderType ?? "LOC"),
+        price,
+        quantity,
+        reason: "Broker summary OCR",
+        tradedAt,
+        memo: text,
+      },
+      options.feeRatePercent,
+    ),
+    confidence: 1,
+    notes,
+  };
+}
+
 function parseBrokerPartialFill(
   text: string,
   options: OcrTradeParseOptions,
 ): OcrTradeParseResult | null {
   const isPartialFillScreen =
-    /분할\s*체결\s*내역/.test(text) ||
-    (/주문수량/.test(text) && /체결수량/.test(text) && /체결가격/.test(text));
+    new RegExp(KOREAN.partialFill).test(text) ||
+    (new RegExp(KOREAN.orderQuantity).test(text) &&
+      new RegExp(KOREAN.fillQuantity).test(text) &&
+      new RegExp(KOREAN.fillPrice).test(text));
 
   if (!isPartialFillScreen) return null;
 
@@ -109,19 +211,20 @@ function parseBrokerPartialFill(
     text,
     options.defaultDate ?? new Date().toISOString().slice(0, 10),
   );
-  const fee = calculateFee(fillPrice, quantity, options.feeRatePercent);
 
   return {
-    trade: {
-      type: tradeType,
-      orderType: extractOrderType(text, options.defaultOrderType ?? "LOC"),
-      price: fillPrice,
-      quantity,
-      fee,
-      reason: "Broker partial fill OCR",
-      tradedAt,
-      memo: text,
-    },
+    trade: createTrade(
+      {
+        type: tradeType,
+        orderType: extractOrderType(text, options.defaultOrderType ?? "LOC"),
+        price: fillPrice,
+        quantity,
+        reason: "Broker partial fill OCR",
+        tradedAt,
+        memo: text,
+      },
+      options.feeRatePercent,
+    ),
     confidence: notes.length > 0 ? 0.9 : 1,
     notes,
   };
@@ -132,6 +235,9 @@ export function parseOcrTradeText(
   options: OcrTradeParseOptions = {},
 ): OcrTradeParseResult {
   const text = normalizeText(rawText);
+  const brokerSummaryFill = parseBrokerSummaryFill(text, options);
+  if (brokerSummaryFill) return brokerSummaryFill;
+
   const brokerPartialFill = parseBrokerPartialFill(text, options);
   if (brokerPartialFill) return brokerPartialFill;
 
@@ -140,15 +246,15 @@ export function parseOcrTradeText(
   const tradeType = extractTradeType(text);
   const orderType = extractOrderType(text, options.defaultOrderType ?? "LOC");
   const price = extractNumber(text, [
-    /(?:체결가|체결단가|단가|가격|price)\D*([\d,]+(?:\.\d+)?)/i,
+    new RegExp(`(?:${KOREAN.fillPrice}|${KOREAN.price}|price)\\D*([\\d,]+(?:\\.\\d+)?)`, "i"),
     /\$\s*([\d,]+(?:\.\d+)?)/,
   ]);
   const quantity = extractNumber(text, [
-    /(?:수량|qty|quantity|shares?)\D*([\d,]+)/i,
-    /([\d,]+)\s*(?:주|shares?)/i,
+    new RegExp(`(?:${KOREAN.quantity}|qty|quantity|shares?)\\D*([\\d,]+)`, "i"),
+    new RegExp(`([\\d,]+)\\s*(?:${KOREAN.share}|shares?)`, "i"),
   ]);
   const explicitFee = extractNumber(text, [
-    /(?:수수료|fee|commission)\D*([\d,]+(?:\.\d+)?)/i,
+    new RegExp(`(?:${KOREAN.fee}|fee|commission)\\D*([\\d,]+(?:\\.\\d+)?)`, "i"),
   ]);
   const tradedAt = extractDate(text, defaultDate);
 
@@ -170,19 +276,20 @@ export function parseOcrTradeText(
     };
   }
 
-  const fee = explicitFee ?? calculateFee(price, quantity, options.feeRatePercent);
-
   return {
-    trade: {
-      type: tradeType,
-      orderType,
-      price,
-      quantity,
-      fee,
-      reason: "OCR parsed trade",
-      tradedAt,
-      memo: rawText,
-    },
+    trade: createTrade(
+      {
+        type: tradeType,
+        orderType,
+        price,
+        quantity,
+        reason: "OCR parsed trade",
+        tradedAt,
+        memo: rawText,
+      },
+      options.feeRatePercent,
+      explicitFee,
+    ),
     confidence,
     notes,
   };

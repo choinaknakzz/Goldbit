@@ -1,5 +1,7 @@
 import type {
   DailyPlan,
+  DailyPlanSnapshot,
+  DailyTEventSuggestion,
   DailyTEventInput,
   Division,
   NormalTEvent,
@@ -435,5 +437,143 @@ export function applyDailyTEventToStrategy(
       ? "REVERSE"
       : strategyConfig.mode,
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function getTradeAmount(trade: Trade) {
+  return round(trade.price * trade.quantity);
+}
+
+function getPlanBuyAmount(plan: DailyPlan) {
+  return plan.buyOrders.reduce((sum, order) => sum + (order.amount ?? 0), 0);
+}
+
+export function suggestDailyTEvent(
+  strategyConfig: StrategyConfig,
+  planSnapshot: DailyPlanSnapshot | null | undefined,
+  trades: Trade[],
+  date: string,
+): DailyTEventSuggestion {
+  const dayTrades = trades.filter((trade) => trade.tradedAt === date);
+  const detectedSummary = dayTrades.map(
+    (trade) =>
+      `${trade.type} ${trade.orderType} ${trade.quantity} @ ${round(trade.price, 4)}`,
+  );
+
+  if (!planSnapshot) {
+    return {
+      input: null,
+      confidence: 0,
+      reason: "No saved action plan snapshot for this date.",
+      detectedSummary,
+    };
+  }
+
+  if (dayTrades.length === 0) {
+    return {
+      input: null,
+      confidence: 0,
+      reason: "No confirmed trades for this date.",
+      detectedSummary,
+    };
+  }
+
+  if (planSnapshot.plan.mode === "REVERSE") {
+    const hasBuy = dayTrades.some((trade) => trade.type === "BUY");
+    const hasSell = dayTrades.some((trade) => trade.type === "SELL");
+
+    if (hasBuy) {
+      return {
+        input: {
+          date,
+          mode: "REVERSE",
+          reverseTEvent: "BUY",
+          memo: "Suggested from confirmed trades and saved action plan.",
+        },
+        confidence: 0.85,
+        reason: "Reverse-mode buy trade was detected.",
+        detectedSummary,
+      };
+    }
+
+    if (hasSell) {
+      return {
+        input: {
+          date,
+          mode: "REVERSE",
+          reverseTEvent: "SELL",
+          memo: "Suggested from confirmed trades and saved action plan.",
+        },
+        confidence: 0.85,
+        reason: "Reverse-mode sell trade was detected.",
+        detectedSummary,
+      };
+    }
+  }
+
+  const buyTrades = dayTrades.filter((trade) => trade.type === "BUY");
+  const sellTrades = dayTrades.filter((trade) => trade.type === "SELL");
+  const totalBuyAmount = buyTrades.reduce(
+    (sum, trade) => sum + getTradeAmount(trade),
+    0,
+  );
+  const planBuyAmount = getPlanBuyAmount(planSnapshot.plan);
+  const buyFillRatio = planBuyAmount > 0 ? totalBuyAmount / planBuyAmount : 0;
+  const hasLimitSell = sellTrades.some((trade) => trade.orderType === "LIMIT");
+  const hasLocSell = sellTrades.some((trade) => trade.orderType === "LOC");
+
+  if (hasLimitSell && buyTrades.length > 0) {
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent:
+          buyFillRatio >= 0.7
+            ? "LIMIT_SELL_AND_FULL_LOC_BUY"
+            : "LIMIT_SELL_AND_HALF_LOC_BUY",
+        memo: "Suggested from confirmed trades and saved action plan.",
+      },
+      confidence: buyFillRatio >= 0.3 ? 0.85 : 0.65,
+      reason: `LIMIT sell and LOC buy were detected. Buy fill ratio: ${round(buyFillRatio * 100, 0)}%.`,
+      detectedSummary,
+    };
+  }
+
+  if (hasLocSell && buyTrades.length === 0) {
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent: "QUARTER_SELL",
+        memo: "Suggested from confirmed trades and saved action plan.",
+      },
+      confidence: 0.8,
+      reason: "LOC sell was detected without same-day buy fills.",
+      detectedSummary,
+    };
+  }
+
+  if (buyTrades.length > 0) {
+    const normalTEvent: NormalTEvent =
+      buyFillRatio >= 0.7 ? "FULL_BUY" : "HALF_BUY";
+
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent,
+        memo: "Suggested from confirmed trades and saved action plan.",
+      },
+      confidence: buyFillRatio >= 0.3 ? 0.9 : 0.55,
+      reason: `Confirmed buy amount ${round(totalBuyAmount)} vs planned buy amount ${round(planBuyAmount)} (${round(buyFillRatio * 100, 0)}%).`,
+      detectedSummary,
+    };
+  }
+
+  return {
+    input: null,
+    confidence: 0,
+    reason: "Confirmed trades did not match a supported T update pattern.",
+    detectedSummary,
   };
 }
