@@ -2,13 +2,13 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $taskName = "GoldbitAutomationLab"
-$logPath = Join-Path $projectRoot "automation-service.log"
+$runnerPath = Join-Path $PSScriptRoot "run-service-hidden.vbs"
 
-$command = @"
-cd /d "$projectRoot" && npm.cmd run start >> "$logPath" 2>&1
-"@
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+}
 
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c $command" -WorkingDirectory $projectRoot
+$action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$runnerPath`"" -WorkingDirectory $projectRoot
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `

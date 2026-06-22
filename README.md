@@ -118,7 +118,7 @@ npm run build
 npm run service:install
 ```
 
-등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 로그는 `automation-service.log`에 저장됩니다.
+등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 숨김 런처로 실행되어 CMD 창을 띄우지 않습니다. 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 로그는 `automation-service.log`에 저장됩니다.
 
 작업 스케줄러 등록을 해제하려면 아래 명령을 실행합니다.
 
