@@ -101,14 +101,14 @@ export const sendCandidateMessage = async (candidate: OrderCandidate): Promise<v
   }
 };
 
-export const sendTextMessage = async (message: string): Promise<void> => {
-  if (!config.telegram.botToken || !config.telegram.chatId) {
+export const sendTextMessage = async (message: string, chatId = config.telegram.chatId): Promise<void> => {
+  if (!config.telegram.botToken || !chatId) {
     await writeLog("WARN", "Telegram configuration missing; text message not sent");
     return;
   }
 
   await callTelegramApi("sendMessage", {
-    chat_id: config.telegram.chatId,
+    chat_id: chatId,
     text: message
   });
 };

@@ -77,11 +77,19 @@ cd "D:\Goldbit Automation Lab"
 npm run candidate
 ```
 
+SOXL 현재 정보 Telegram 전송:
+
+```powershell
+npm run soxl
+```
+
 Bot만 실행:
 
 ```powershell
 npm run bot
 ```
+
+Bot 실행 중에는 Telegram에서 `/soxl` 또는 `/status`를 보내 현재 SOXL 가격, 보유수량, 평균단가, 평가금액, USD 매수가능금액, 최근 주문/체결을 받을 수 있습니다.
 
 개발 실행, Bot + Scheduler 동시 실행:
 
