@@ -110,8 +110,12 @@ export const renderActionPlanMessage = (plan: DailyPlan, candidates: OrderCandid
   ].join("\n");
 };
 
-export const sendActionPlanMessage = async (plan: DailyPlan, candidates: OrderCandidate[]): Promise<void> => {
-  if (!config.telegram.botToken || !config.telegram.chatId) {
+export const sendActionPlanMessage = async (
+  plan: DailyPlan,
+  candidates: OrderCandidate[],
+  chatId = config.telegram.chatId
+): Promise<void> => {
+  if (!config.telegram.botToken || !chatId) {
     await writeLog("WARN", "Telegram configuration missing; action plan message not sent");
     return;
   }
@@ -127,7 +131,7 @@ export const sendActionPlanMessage = async (plan: DailyPlan, candidates: OrderCa
     : [];
 
   await callTelegramApi("sendMessage", {
-    chat_id: config.telegram.chatId,
+    chat_id: chatId,
     text: renderActionPlanMessage(plan, candidates),
     ...(keyboard.length > 0
       ? {

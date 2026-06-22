@@ -75,7 +75,7 @@ const buildPlanFromGoldbitState = async (): Promise<DailyPlan> => {
     : generateNormalDailyPlan(liveStrategy, previousClose);
 };
 
-export const createAndSendGoldbitActionPlan = async (): Promise<{
+export const createAndSendGoldbitActionPlan = async (chatId?: string): Promise<{
   plan: DailyPlan;
   candidates: OrderCandidate[];
 }> => {
@@ -89,7 +89,7 @@ export const createAndSendGoldbitActionPlan = async (): Promise<{
     candidates.push(await saveCandidate(draft));
   }
 
-  await sendActionPlanMessage(plan, candidates);
+  await sendActionPlanMessage(plan, candidates, chatId);
   await writeLog("INFO", "Goldbit action plan sent", {
     date: plan.date,
     mode: plan.mode,
