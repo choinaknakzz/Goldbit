@@ -58,11 +58,14 @@ export const renderSoxlStatusMessage = (status: SoxlStatus): string => {
     status.position.averagePrice > 0
       ? ((status.currentPrice.price - status.position.averagePrice) / status.position.averagePrice) * 100
       : 0;
-  const today = status.createdAt.toLocaleDateString("en-CA", { timeZone: config.timezone });
+  const latestTradingDate = status.recentExecutions[0]?.tradingDate;
+  const executionHeading = latestTradingDate
+    ? `최근 미국 거래일 주문/체결 (${latestTradingDate}):`
+    : "최근 미국 거래일 주문/체결:";
   const executionLines =
     status.recentExecutions.length > 0
       ? status.recentExecutions.map(formatExecutionLine)
-      : ["- 오늘 주문/체결 내역 없음"];
+      : ["- 최근 10일 내 주문/체결 내역 없음"];
 
   return [
     "[Goldbit SOXL 현재 정보]",
@@ -80,7 +83,7 @@ export const renderSoxlStatusMessage = (status: SoxlStatus): string => {
     "",
     `USD 매수가능금액: ${money(status.availableCash.amount, status.availableCash.currency)}`,
     "",
-    `오늘 주문/체결 (${today}):`,
+    executionHeading,
     ...executionLines
   ].join("\n");
 };
@@ -91,6 +94,7 @@ export const sendSoxlStatus = async (chatId?: string): Promise<void> => {
   await writeLog("INFO", "SOXL status message sent", {
     symbol: status.symbol,
     chatId: chatId ?? config.telegram.chatId,
-    executionCount: status.recentExecutions.length
+    executionCount: status.recentExecutions.length,
+    tradingDate: status.recentExecutions[0]?.tradingDate
   });
 };

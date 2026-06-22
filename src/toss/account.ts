@@ -52,6 +52,26 @@ const getKstDate = (date = new Date()): string => {
   return `${year}-${month}-${day}`;
 };
 
+const addDays = (date: Date, days: number): Date => {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+};
+
+const getNewYorkDate = (dateText: string): string => {
+  const date = new Date(dateText);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+};
+
 export const getAccounts = async (): Promise<TossAccount[]> => {
   const client = await createTossClient();
   const response = await client.get<ApiResponse<TossAccount[]>>("/api/v1/accounts");
@@ -88,23 +108,37 @@ export const getAvailableCash = async (): Promise<AvailableCash> => {
 export const getRecentExecutions = async (symbol: string): Promise<Execution[]> => {
   const accountSeq = await getDefaultAccountSeq();
   const client = await createTossClient(accountSeq);
-  const today = getKstDate();
+  const today = new Date();
+  const from = getKstDate(addDays(today, -10));
+  const to = getKstDate(today);
   const response = await client.get<ApiResponse<OrdersResponse>>("/api/v1/orders", {
     params: {
       status: "CLOSED",
       symbol,
-      from: today,
-      to: today,
+      from,
+      to,
       limit: 100
     }
   });
 
-  return response.data.result.orders.map((order) => ({
+  const executions = response.data.result.orders.map((order) => {
+    const executedAt = order.execution?.filledAt ?? order.orderedAt;
+
+    return {
     id: order.orderId,
     symbol: order.symbol,
     side: order.side,
     quantity: toNumber(order.quantity),
     price: toNumber(order.execution?.averageFilledPrice ?? order.price),
-    executedAt: order.execution?.filledAt ?? order.orderedAt
-  }));
+      executedAt,
+      tradingDate: getNewYorkDate(executedAt)
+    };
+  });
+  const latestTradingDate = executions
+    .map((execution) => execution.tradingDate)
+    .filter((tradingDate): tradingDate is string => Boolean(tradingDate))
+    .sort()
+    .at(-1);
+
+  return executions.filter((execution) => execution.tradingDate === latestTradingDate);
 };

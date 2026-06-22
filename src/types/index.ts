@@ -28,6 +28,7 @@ export interface Execution {
   quantity: number;
   price?: number;
   executedAt: string;
+  tradingDate?: string;
 }
 
 export interface OrderRequest {
