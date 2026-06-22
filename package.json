@@ -1,0 +1,30 @@
+{
+  "name": "goldbit-automation-lab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Goldbit SOXL Telegram approval automation lab",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts dev",
+    "start": "node dist/index.js dev",
+    "build": "tsc",
+    "bot": "tsx src/index.ts bot",
+    "candidate": "tsx src/index.ts candidate",
+    "prisma:generate": "prisma generate",
+    "preprisma:migrate": "node scripts/ensure-sqlite-db.mjs",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "6.10.1",
+    "axios": "^1.10.0",
+    "dotenv": "^16.5.0",
+    "node-cron": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.4",
+    "prisma": "6.10.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

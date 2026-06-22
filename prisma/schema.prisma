@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model OrderCandidate {
+  id              String    @id
+  symbol          String
+  side            String
+  orderType       String
+  quantity        Float
+  estimatedPrice  Float?
+  estimatedAmount Float?
+  status          String
+  rawData         String?
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime?
+  approvedAt      DateTime?
+  canceledAt      DateTime?
+  executedAt      DateTime?
+}
+
+model OrderExecution {
+  id              String   @id @default(cuid())
+  candidateId     String
+  symbol          String
+  side            String
+  orderType       String
+  quantity        Float
+  status          String
+  brokerOrderId   String?
+  requestPayload  String?
+  responsePayload String?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+}
+
+model AppLog {
+  id        String   @id @default(cuid())
+  level     String
+  message   String
+  context   String?
+  createdAt DateTime @default(now())
+}
