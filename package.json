@@ -12,6 +12,8 @@
     "candidate": "tsx src/index.ts candidate",
     "plan": "tsx src/index.ts candidate",
     "soxl": "tsx src/index.ts soxl",
+    "service:install": "powershell -ExecutionPolicy Bypass -File scripts/register-windows-task.ps1",
+    "service:uninstall": "powershell -ExecutionPolicy Bypass -File scripts/unregister-windows-task.ps1",
     "prisma:generate": "prisma generate",
     "preprisma:migrate": "node scripts/ensure-sqlite-db.mjs",
     "prisma:migrate": "prisma migrate dev",

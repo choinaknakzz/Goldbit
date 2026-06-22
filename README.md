@@ -77,7 +77,7 @@ cd "D:\Goldbit Automation Lab"
 npm run candidate
 ```
 
-`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다. Telegram에서는 후보별 승인 대신 `전체 승인` 버튼 하나로 plan 전체를 승인하며, 승인 시 후보가 plan 순서대로 하나씩 주문됩니다. 모든 주문 시도가 끝나면 성공/실패 건수와 각 주문의 수량, 가격, 주문 ID 또는 실패 사유를 Telegram으로 요약합니다.
+`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다. Telegram에서는 후보별 승인 대신 `전체 승인` 버튼 하나로 plan 전체를 승인하며, 승인 시 후보가 plan 순서대로 하나씩 주문됩니다. 모든 주문 시도가 끝나면 성공/실패 건수와 각 주문의 수량, 가격, 실패 사유를 Telegram으로 요약합니다.
 
 SOXL 현재 정보 Telegram 전송:
 
@@ -108,17 +108,25 @@ npm run build
 npm run start
 ```
 
-## Windows PC 24시간 실행
+## Windows PC 자동 실행
 
-간단한 운영은 PowerShell 창을 열어 둔 상태로 실행합니다.
+봇과 스케줄러를 항상 띄워두려면 먼저 빌드한 뒤 Windows 작업 스케줄러에 등록합니다.
 
 ```powershell
 cd "D:\Goldbit Automation Lab"
 npm run build
-npm run start
+npm run service:install
 ```
 
-PC 재부팅 후에는 같은 명령을 다시 실행합니다. 장기 운영 시에는 Windows 작업 스케줄러에 위 명령을 등록하고, 작업 시작 위치를 `D:\Goldbit Automation Lab`로 지정합니다.
+등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 로그는 `automation-service.log`에 저장됩니다.
+
+작업 스케줄러 등록을 해제하려면 아래 명령을 실행합니다.
+
+```powershell
+npm run service:uninstall
+```
+
+임시 실행이 필요할 때는 기존처럼 `npm run dev` 또는 `npm run start`를 사용할 수 있습니다.
 
 ## 로그 확인
 

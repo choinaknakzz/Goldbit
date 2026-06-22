@@ -26,7 +26,6 @@ interface ExecutionAttempt {
   candidate: OrderCandidate;
   ok: boolean;
   attemptedAt: Date;
-  brokerOrderId?: string;
   errorMessage?: string;
 }
 
@@ -111,7 +110,7 @@ const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAtt
     });
     await markCandidateStatus(candidate.id, "EXECUTED", "executedAt");
     await writeLog("INFO", "order execution succeeded", { candidateId: candidate.id });
-    return { candidate, ok: true, attemptedAt, brokerOrderId: orderResult.brokerOrderId };
+    return { candidate, ok: true, attemptedAt };
   } catch (error) {
     const errorMessage = parseTossError(error);
     await saveExecution({
@@ -136,7 +135,7 @@ const renderExecutionSummary = (title: string, attempts: ExecutionAttempt[]): st
   const lines = attempts.map((attempt, index) => {
     const result = attempt.ok ? "성공" : "실패";
     const detail = attempt.ok
-      ? `주문 ID: ${attempt.brokerOrderId ?? "N/A"}`
+      ? "결과: 주문 요청 완료"
       : `사유: ${attempt.errorMessage ?? "Unknown error"}`;
 
     return [
