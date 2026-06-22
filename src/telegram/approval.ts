@@ -25,6 +25,7 @@ export interface TelegramCallbackQuery {
 interface ExecutionAttempt {
   candidate: OrderCandidate;
   ok: boolean;
+  attemptedAt: Date;
   brokerOrderId?: string;
   errorMessage?: string;
 }
@@ -68,11 +69,29 @@ const createOrderRequest = (candidate: OrderCandidate): OrderRequest => {
   };
 };
 
+const money = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "N/A";
+  return `$${value.toFixed(2)}`;
+};
+
 const orderLabel = (candidate: OrderCandidate): string => {
-  return `${candidate.orderType} ${candidate.side} ${candidate.quantity.toFixed(0)}주`;
+  return [
+    candidate.side,
+    candidate.orderType,
+    `${candidate.quantity.toFixed(0)}주`,
+    `@ ${money(candidate.estimatedPrice)}`,
+    candidate.estimatedAmount ? `약 ${money(candidate.estimatedAmount)}` : undefined
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
+
+const formatKstTime = (date: Date): string => {
+  return date.toLocaleString("ko-KR", { timeZone: config.timezone });
 };
 
 const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAttempt> => {
+  const attemptedAt = new Date();
   await assertExecutableCandidate(candidate);
   await markCandidateStatus(candidate.id, "APPROVED", "approvedAt");
   const orderRequest = createOrderRequest(candidate);
@@ -92,7 +111,7 @@ const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAtt
     });
     await markCandidateStatus(candidate.id, "EXECUTED", "executedAt");
     await writeLog("INFO", "order execution succeeded", { candidateId: candidate.id });
-    return { candidate, ok: true, brokerOrderId: orderResult.brokerOrderId };
+    return { candidate, ok: true, attemptedAt, brokerOrderId: orderResult.brokerOrderId };
   } catch (error) {
     const errorMessage = parseTossError(error);
     await saveExecution({
@@ -107,18 +126,37 @@ const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAtt
     });
     await markCandidateStatus(candidate.id, "FAILED");
     await writeLog("ERROR", "order execution failed", { candidateId: candidate.id, error: errorMessage });
-    return { candidate, ok: false, errorMessage };
+    return { candidate, ok: false, attemptedAt, errorMessage };
   }
 };
 
 const renderExecutionSummary = (title: string, attempts: ExecutionAttempt[]): string => {
+  const successCount = attempts.filter((attempt) => attempt.ok).length;
+  const failedCount = attempts.length - successCount;
   const lines = attempts.map((attempt, index) => {
-    const prefix = attempt.ok ? "성공" : "실패";
-    const suffix = attempt.ok ? `주문 ID: ${attempt.brokerOrderId ?? "N/A"}` : attempt.errorMessage ?? "Unknown error";
-    return `${index + 1}. ${prefix} - ${orderLabel(attempt.candidate)} (${suffix})`;
+    const result = attempt.ok ? "성공" : "실패";
+    const detail = attempt.ok
+      ? `주문 ID: ${attempt.brokerOrderId ?? "N/A"}`
+      : `사유: ${attempt.errorMessage ?? "Unknown error"}`;
+
+    return [
+      `${index + 1}. ${result}`,
+      `- 주문: ${orderLabel(attempt.candidate)}`,
+      `- 후보 ID: ${attempt.candidate.id}`,
+      `- 요청시각: ${formatKstTime(attempt.attemptedAt)}`,
+      `- ${detail}`
+    ].join("\n");
   });
 
-  return [title, "", ...lines].join("\n");
+  return [
+    title,
+    "",
+    `총 주문 시도: ${attempts.length}건`,
+    `성공: ${successCount}건`,
+    `실패: ${failedCount}건`,
+    "",
+    ...lines
+  ].join("\n");
 };
 
 export const approveCandidate = async (candidateId: string): Promise<void> => {

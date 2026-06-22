@@ -77,7 +77,7 @@ cd "D:\Goldbit Automation Lab"
 npm run candidate
 ```
 
-`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다. Telegram에서는 후보별 승인 대신 `전체 승인` 버튼 하나로 plan 전체를 승인하며, 승인 시 후보가 plan 순서대로 하나씩 주문됩니다.
+`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다. Telegram에서는 후보별 승인 대신 `전체 승인` 버튼 하나로 plan 전체를 승인하며, 승인 시 후보가 plan 순서대로 하나씩 주문됩니다. 모든 주문 시도가 끝나면 성공/실패 건수와 각 주문의 수량, 가격, 주문 ID 또는 실패 사유를 Telegram으로 요약합니다.
 
 SOXL 현재 정보 Telegram 전송:
 
