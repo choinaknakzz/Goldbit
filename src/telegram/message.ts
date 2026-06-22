@@ -1,7 +1,7 @@
 import type { OrderCandidate } from "@prisma/client";
 import { config } from "../config.js";
-import { writeLog } from "../storage/logs.js";
 import type { DailyPlan } from "../goldbit/mechanism-types.js";
+import { writeLog } from "../storage/logs.js";
 
 interface TelegramApiResponse<T> {
   ok: boolean;
@@ -31,75 +31,9 @@ export const callTelegramApi = async <T>(
   return body.result as T;
 };
 
-const money = (value: number | null): string => {
-  if (value === null) return "TODO: Toss API required";
+const formatMoney = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "N/A";
   return `$${value.toFixed(2)}`;
-};
-
-const numberText = (value: number | null): string => {
-  if (value === null) return "TODO: Toss API required";
-  return value.toFixed(2);
-};
-
-export const renderCandidateMessage = (candidate: OrderCandidate): string => {
-  const rawData = candidate.rawData ? JSON.parse(candidate.rawData) : {};
-  const holdingQuantity = typeof rawData.holdingQuantity === "number" ? rawData.holdingQuantity : null;
-  const averagePrice = typeof rawData.averagePrice === "number" ? rawData.averagePrice : null;
-  const availableCash =
-    rawData.availableCash && typeof rawData.availableCash.amount === "number" ? rawData.availableCash.amount : null;
-
-  return [
-    "[Goldbit 매매 후보]",
-    "",
-    `종목: ${candidate.symbol}`,
-    "전략: 무한매수법 V4 placeholder",
-    `구분: ${candidate.orderType} 매수`,
-    "",
-    `현재가: ${money(candidate.estimatedPrice)}`,
-    `보유수량: ${numberText(holdingQuantity)}주`,
-    `평균단가: ${money(averagePrice)}`,
-    `주문가능금액: ${money(availableCash)}`,
-    "",
-    "주문 후보:",
-    `- 주문유형: ${candidate.orderType} 매수`,
-    `- 수량: ${candidate.quantity.toFixed(2)}주`,
-    `- 예상금액: 약 ${money(candidate.estimatedAmount)}`,
-    "",
-    `승인 가능 시간: ${config.approvalExpireMinutes}분`,
-    "",
-    "실행할까요?"
-  ].join("\n");
-};
-
-export const sendCandidateMessage = async (candidate: OrderCandidate): Promise<void> => {
-  if (!config.telegram.botToken || !config.telegram.chatId) {
-    await writeLog("WARN", "Telegram configuration missing; candidate message not sent", {
-      candidateId: candidate.id
-    });
-    return;
-  }
-
-  try {
-    await callTelegramApi("sendMessage", {
-      chat_id: config.telegram.chatId,
-      text: renderCandidateMessage(candidate),
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "승인", callback_data: `approve:${candidate.id}` },
-            { text: "취소", callback_data: `cancel:${candidate.id}` }
-          ]
-        ]
-      }
-    });
-    await writeLog("INFO", "Telegram candidate message sent", { candidateId: candidate.id });
-  } catch (error) {
-    await writeLog("ERROR", "Telegram candidate message failed", {
-      candidateId: candidate.id,
-      error: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
-  }
 };
 
 export const sendTextMessage = async (message: string, chatId = config.telegram.chatId): Promise<void> => {
@@ -114,9 +48,18 @@ export const sendTextMessage = async (message: string, chatId = config.telegram.
   });
 };
 
-const formatMoney = (value: number | null | undefined): string => {
-  if (value === null || value === undefined) return "N/A";
-  return `$${value.toFixed(2)}`;
+export const sendCandidateMessage = async (candidate: OrderCandidate): Promise<void> => {
+  await sendTextMessage(
+    [
+      "[Goldbit 주문 후보]",
+      "",
+      `종목: ${candidate.symbol}`,
+      `구분: ${candidate.orderType} ${candidate.side}`,
+      `수량: ${candidate.quantity.toFixed(0)}주`,
+      `가격: ${formatMoney(candidate.estimatedPrice)}`,
+      `예상금액: ${formatMoney(candidate.estimatedAmount)}`
+    ].join("\n")
+  );
 };
 
 const formatOrderLine = (candidate: OrderCandidate, index: number): string => {
@@ -130,13 +73,15 @@ const formatOrderLine = (candidate: OrderCandidate, index: number): string => {
     .join(" ");
 };
 
+const getPlanGroupId = (candidates: OrderCandidate[]): string | undefined => {
+  if (!candidates[0]?.rawData) return undefined;
+  const rawData = JSON.parse(candidates[0].rawData) as { planGroupId?: string };
+  return rawData.planGroupId;
+};
+
 export const renderActionPlanMessage = (plan: DailyPlan, candidates: OrderCandidate[]): string => {
-  const buyLines = candidates
-    .filter((candidate) => candidate.side === "BUY")
-    .map(formatOrderLine);
-  const sellLines = candidates
-    .filter((candidate) => candidate.side === "SELL")
-    .map(formatOrderLine);
+  const buyLines = candidates.filter((candidate) => candidate.side === "BUY").map(formatOrderLine);
+  const sellLines = candidates.filter((candidate) => candidate.side === "SELL").map(formatOrderLine);
 
   return [
     "[Goldbit Today Action Plan]",
@@ -160,7 +105,8 @@ export const renderActionPlanMessage = (plan: DailyPlan, candidates: OrderCandid
     ...(sellLines.length > 0 ? sellLines : ["- 없음"]),
     ...(plan.warnings.length > 0 ? ["", "주의:", ...plan.warnings.map((warning) => `- ${warning}`)] : []),
     "",
-    `승인 가능 시간: ${config.approvalExpireMinutes}분`
+    `승인 가능 시간: ${config.approvalExpireMinutes}분`,
+    "승인하면 위 후보 전체를 순서대로 주문합니다."
   ].join("\n");
 };
 
@@ -170,18 +116,15 @@ export const sendActionPlanMessage = async (plan: DailyPlan, candidates: OrderCa
     return;
   }
 
-  const keyboard = candidates.flatMap((candidate, index) => [
-    [
-      {
-        text: `승인 ${index + 1}`,
-        callback_data: `approve:${candidate.id}`
-      },
-      {
-        text: `취소 ${index + 1}`,
-        callback_data: `cancel:${candidate.id}`
-      }
-    ]
-  ]);
+  const groupId = getPlanGroupId(candidates);
+  const keyboard = groupId
+    ? [
+        [
+          { text: "전체 승인", callback_data: `approve-plan:${groupId}` },
+          { text: "전체 취소", callback_data: `cancel-plan:${groupId}` }
+        ]
+      ]
+    : [];
 
   await callTelegramApi("sendMessage", {
     chat_id: config.telegram.chatId,

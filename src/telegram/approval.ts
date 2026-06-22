@@ -1,10 +1,14 @@
 import type { OrderCandidate } from "@prisma/client";
 import { assertTargetSymbol, config } from "../config.js";
-import { findCandidate, markCandidateStatus } from "../storage/candidates.js";
+import {
+  findCandidate,
+  findCandidatesByIdPrefix,
+  markCandidateStatus
+} from "../storage/candidates.js";
 import { saveExecution } from "../storage/executions.js";
 import { writeLog } from "../storage/logs.js";
-import { placeOrder } from "../toss/order.js";
 import { parseTossError } from "../toss/client.js";
+import { placeOrder } from "../toss/order.js";
 import type { OrderRequest } from "../types/index.js";
 import { callTelegramApi, sendTextMessage } from "./message.js";
 
@@ -18,8 +22,25 @@ export interface TelegramCallbackQuery {
   };
 }
 
+interface ExecutionAttempt {
+  candidate: OrderCandidate;
+  ok: boolean;
+  brokerOrderId?: string;
+  errorMessage?: string;
+}
+
 const isExpired = (candidate: OrderCandidate): boolean => {
   return Boolean(candidate.expiresAt && candidate.expiresAt.getTime() < Date.now());
+};
+
+const getCandidateSequence = (candidate: OrderCandidate): number => {
+  if (!candidate.rawData) return 999;
+  const rawData = JSON.parse(candidate.rawData) as { sequence?: number };
+  return rawData.sequence ?? 999;
+};
+
+const sortCandidatesByPlanOrder = (candidates: OrderCandidate[]): OrderCandidate[] => {
+  return [...candidates].sort((left, right) => getCandidateSequence(left) - getCandidateSequence(right));
 };
 
 const assertExecutableCandidate = async (candidate: OrderCandidate): Promise<void> => {
@@ -48,20 +69,12 @@ const createOrderRequest = (candidate: OrderCandidate): OrderRequest => {
 };
 
 const orderLabel = (candidate: OrderCandidate): string => {
-  return `${candidate.orderType} ${candidate.side}`;
+  return `${candidate.orderType} ${candidate.side} ${candidate.quantity.toFixed(0)}주`;
 };
 
-export const approveCandidate = async (candidateId: string): Promise<void> => {
-  await writeLog("INFO", "approval received", { candidateId });
-
-  const candidate = await findCandidate(candidateId);
-  if (!candidate) {
-    throw new Error(`Candidate not found: ${candidateId}`);
-  }
-
+const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAttempt> => {
   await assertExecutableCandidate(candidate);
   await markCandidateStatus(candidate.id, "APPROVED", "approvedAt");
-
   const orderRequest = createOrderRequest(candidate);
 
   try {
@@ -79,17 +92,7 @@ export const approveCandidate = async (candidateId: string): Promise<void> => {
     });
     await markCandidateStatus(candidate.id, "EXECUTED", "executedAt");
     await writeLog("INFO", "order execution succeeded", { candidateId: candidate.id });
-    await sendTextMessage(
-      [
-        "[Goldbit 주문 실행 완료]",
-        "",
-        `종목: ${candidate.symbol}`,
-        `구분: ${orderLabel(candidate)}`,
-        `수량: ${candidate.quantity.toFixed(0)}주`,
-        "상태: 주문 요청 성공",
-        `주문 ID: ${orderResult.brokerOrderId ?? "N/A"}`
-      ].join("\n")
-    );
+    return { candidate, ok: true, brokerOrderId: orderResult.brokerOrderId };
   } catch (error) {
     const errorMessage = parseTossError(error);
     await saveExecution({
@@ -104,21 +107,51 @@ export const approveCandidate = async (candidateId: string): Promise<void> => {
     });
     await markCandidateStatus(candidate.id, "FAILED");
     await writeLog("ERROR", "order execution failed", { candidateId: candidate.id, error: errorMessage });
-    await sendTextMessage(
-      [
-        "[Goldbit 주문 실행 실패]",
-        "",
-        `종목: ${candidate.symbol}`,
-        `구분: ${orderLabel(candidate)}`,
-        `수량: ${candidate.quantity.toFixed(0)}주`,
-        `사유: ${errorMessage}`
-      ].join("\n")
-    );
+    return { candidate, ok: false, errorMessage };
   }
 };
 
+const renderExecutionSummary = (title: string, attempts: ExecutionAttempt[]): string => {
+  const lines = attempts.map((attempt, index) => {
+    const prefix = attempt.ok ? "성공" : "실패";
+    const suffix = attempt.ok ? `주문 ID: ${attempt.brokerOrderId ?? "N/A"}` : attempt.errorMessage ?? "Unknown error";
+    return `${index + 1}. ${prefix} - ${orderLabel(attempt.candidate)} (${suffix})`;
+  });
+
+  return [title, "", ...lines].join("\n");
+};
+
+export const approveCandidate = async (candidateId: string): Promise<void> => {
+  await writeLog("INFO", "single approval received", { candidateId });
+  const candidate = await findCandidate(candidateId);
+  if (!candidate) {
+    throw new Error(`Candidate not found: ${candidateId}`);
+  }
+
+  const attempt = await executeCandidate(candidate);
+  await sendTextMessage(renderExecutionSummary("[Goldbit 주문 실행 결과]", [attempt]));
+};
+
+export const approvePlan = async (planGroupId: string): Promise<void> => {
+  await writeLog("INFO", "plan approval received", { planGroupId });
+  const candidates = sortCandidatesByPlanOrder(await findCandidatesByIdPrefix(`${planGroupId}-`)).filter(
+    (candidate) => candidate.status === "PENDING"
+  );
+
+  if (candidates.length === 0) {
+    throw new Error(`No pending candidates found for plan: ${planGroupId}`);
+  }
+
+  const attempts: ExecutionAttempt[] = [];
+  for (const candidate of candidates) {
+    attempts.push(await executeCandidate(candidate));
+  }
+
+  await sendTextMessage(renderExecutionSummary("[Goldbit Plan 주문 실행 결과]", attempts));
+};
+
 export const cancelCandidate = async (candidateId: string): Promise<void> => {
-  await writeLog("INFO", "cancel received", { candidateId });
+  await writeLog("INFO", "single cancel received", { candidateId });
 
   const candidate = await findCandidate(candidateId);
   if (!candidate) {
@@ -131,11 +164,32 @@ export const cancelCandidate = async (candidateId: string): Promise<void> => {
 
   await markCandidateStatus(candidate.id, "CANCELED", "canceledAt");
   await sendTextMessage(
+    ["[Goldbit 주문 후보 취소]", "", `종목: ${candidate.symbol}`, `후보 ID: ${candidate.id}`, "상태: CANCELED"].join(
+      "\n"
+    )
+  );
+};
+
+export const cancelPlan = async (planGroupId: string): Promise<void> => {
+  await writeLog("INFO", "plan cancel received", { planGroupId });
+  const candidates = sortCandidatesByPlanOrder(await findCandidatesByIdPrefix(`${planGroupId}-`)).filter(
+    (candidate) => candidate.status === "PENDING"
+  );
+
+  if (candidates.length === 0) {
+    throw new Error(`No pending candidates found for plan: ${planGroupId}`);
+  }
+
+  for (const candidate of candidates) {
+    await markCandidateStatus(candidate.id, "CANCELED", "canceledAt");
+  }
+
+  await sendTextMessage(
     [
-      "[Goldbit 주문 후보 취소]",
+      "[Goldbit Plan 주문 후보 취소]",
       "",
-      `종목: ${candidate.symbol}`,
-      `후보 ID: ${candidate.id}`,
+      `Plan: ${planGroupId}`,
+      `취소 후보 수: ${candidates.length}`,
       "상태: CANCELED"
     ].join("\n")
   );
@@ -143,10 +197,10 @@ export const cancelCandidate = async (candidateId: string): Promise<void> => {
 
 export const handleApprovalCallback = async (query: TelegramCallbackQuery): Promise<void> => {
   const data = query.data ?? "";
-  const [action, candidateId] = data.split(":");
+  const [action, targetId] = data.split(":");
   const chatId = query.message?.chat?.id?.toString();
 
-  if (!candidateId || (action !== "approve" && action !== "cancel")) {
+  if (!targetId || !["approve", "cancel", "approve-plan", "cancel-plan"].includes(action)) {
     return;
   }
 
@@ -159,21 +213,22 @@ export const handleApprovalCallback = async (query: TelegramCallbackQuery): Prom
     }
 
     if (action === "approve") {
-      await approveCandidate(candidateId);
-      await callTelegramApi("answerCallbackQuery", {
-        callback_query_id: query.id,
-        text: "승인 처리 완료"
-      });
+      await approveCandidate(targetId);
+    } else if (action === "cancel") {
+      await cancelCandidate(targetId);
+    } else if (action === "approve-plan") {
+      await approvePlan(targetId);
     } else {
-      await cancelCandidate(candidateId);
-      await callTelegramApi("answerCallbackQuery", {
-        callback_query_id: query.id,
-        text: "취소 처리 완료"
-      });
+      await cancelPlan(targetId);
     }
+
+    await callTelegramApi("answerCallbackQuery", {
+      callback_query_id: query.id,
+      text: "처리 완료"
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await writeLog("ERROR", "approval callback failed", { candidateId, action, error: message });
+    await writeLog("ERROR", "approval callback failed", { targetId, action, error: message });
     await callTelegramApi("answerCallbackQuery", {
       callback_query_id: query.id,
       text: message,

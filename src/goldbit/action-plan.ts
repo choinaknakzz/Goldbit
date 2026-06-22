@@ -23,7 +23,9 @@ const orderAmount = (order: PlannedOrder): number | undefined => {
 
 const planDateCompact = (plan: DailyPlan): string => plan.date.replace(/-/g, "");
 
-const toCandidate = (plan: DailyPlan, order: PlannedOrder): CandidateDraft | null => {
+const planGroupId = (plan: DailyPlan): string => `${planDateCompact(plan)}-${plan.symbol}-PLAN`;
+
+const toCandidate = (plan: DailyPlan, order: PlannedOrder, sequence: number): CandidateDraft | null => {
   if (!isSupportedOrderType(order.orderType) || !order.quantity || order.quantity < 1) {
     return null;
   }
@@ -34,7 +36,7 @@ const toCandidate = (plan: DailyPlan, order: PlannedOrder): CandidateDraft | nul
   const orderType = order.orderType as OrderType;
 
   return {
-    id: `${planDateCompact(plan)}-${plan.symbol}-${side}-${orderType}-${order.priority}`,
+    id: `${planGroupId(plan)}-${String(sequence).padStart(2, "0")}-${side}-${orderType}-${order.priority}`,
     symbol: plan.symbol,
     side,
     orderType,
@@ -46,6 +48,8 @@ const toCandidate = (plan: DailyPlan, order: PlannedOrder): CandidateDraft | nul
     expiresAt,
     rawData: {
       source: "Goldbit Today Action Plan",
+      planGroupId: planGroupId(plan),
+      sequence,
       plan,
       order
     }
@@ -77,7 +81,7 @@ export const createAndSendGoldbitActionPlan = async (): Promise<{
 }> => {
   const plan = await buildPlanFromGoldbitState();
   const drafts = [...plan.buyOrders, ...plan.sellOrders]
-    .map((order) => toCandidate(plan, order))
+    .map((order, index) => toCandidate(plan, order, index + 1))
     .filter((candidate): candidate is CandidateDraft => Boolean(candidate));
   const candidates: OrderCandidate[] = [];
 

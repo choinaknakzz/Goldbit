@@ -35,6 +35,19 @@ export const findCandidate = async (id: string): Promise<OrderCandidate | null> 
   return prisma.orderCandidate.findUnique({ where: { id } });
 };
 
+export const findCandidatesByIdPrefix = async (idPrefix: string): Promise<OrderCandidate[]> => {
+  return prisma.orderCandidate.findMany({
+    where: {
+      id: {
+        startsWith: idPrefix
+      }
+    },
+    orderBy: {
+      id: "asc"
+    }
+  });
+};
+
 export const markCandidateStatus = async (
   id: string,
   status: CandidateStatus,
