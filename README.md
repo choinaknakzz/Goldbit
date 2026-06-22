@@ -89,7 +89,7 @@ Bot만 실행:
 npm run bot
 ```
 
-Bot 실행 중에는 Telegram에서 `/soxl` 또는 `/status`를 보내 현재 SOXL 가격, 보유수량, 평균단가, 평가금액, USD 매수가능금액, 최근 주문/체결을 받을 수 있습니다.
+Bot 실행 중에는 Telegram에서 `/soxl` 또는 `/status`를 보내 현재 SOXL 가격, 보유수량, 평균단가, 평가금액, USD 매수가능금액, 오늘 하루 주문/체결 내역을 받을 수 있습니다.
 
 개발 실행, Bot + Scheduler 동시 실행:
 

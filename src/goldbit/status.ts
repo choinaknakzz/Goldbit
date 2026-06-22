@@ -30,6 +30,11 @@ const quantity = (value: number): string => {
   });
 };
 
+const formatExecutionLine = (execution: Execution): string => {
+  const price = execution.price ? money(execution.price) : "N/A";
+  return `- ${execution.side} ${quantity(execution.quantity)}주 @ ${price} (${execution.executedAt})`;
+};
+
 export const getSoxlStatus = async (symbol = config.targetSymbol): Promise<SoxlStatus> => {
   const availableCash = await getAvailableCash();
   const position = await getPosition(symbol);
@@ -47,13 +52,17 @@ export const getSoxlStatus = async (symbol = config.targetSymbol): Promise<SoxlS
 };
 
 export const renderSoxlStatusMessage = (status: SoxlStatus): string => {
-  const latestExecution = status.recentExecutions[0];
   const evaluatedAmount = status.position.quantity * status.currentPrice.price;
   const profitLoss = evaluatedAmount - status.position.quantity * status.position.averagePrice;
   const profitLossRate =
     status.position.averagePrice > 0
       ? ((status.currentPrice.price - status.position.averagePrice) / status.position.averagePrice) * 100
       : 0;
+  const today = status.createdAt.toLocaleDateString("en-CA", { timeZone: config.timezone });
+  const executionLines =
+    status.recentExecutions.length > 0
+      ? status.recentExecutions.map(formatExecutionLine)
+      : ["- 오늘 주문/체결 내역 없음"];
 
   return [
     "[Goldbit SOXL 현재 정보]",
@@ -71,12 +80,8 @@ export const renderSoxlStatusMessage = (status: SoxlStatus): string => {
     "",
     `USD 매수가능금액: ${money(status.availableCash.amount, status.availableCash.currency)}`,
     "",
-    "최근 주문/체결:",
-    latestExecution
-      ? `- ${latestExecution.side} ${quantity(latestExecution.quantity)}주 @ ${
-          latestExecution.price ? money(latestExecution.price) : "N/A"
-        } (${latestExecution.executedAt})`
-      : "- 최근 내역 없음"
+    `오늘 주문/체결 (${today}):`,
+    ...executionLines
   ].join("\n");
 };
 
@@ -85,6 +90,7 @@ export const sendSoxlStatus = async (chatId?: string): Promise<void> => {
   await sendTextMessage(renderSoxlStatusMessage(status), chatId);
   await writeLog("INFO", "SOXL status message sent", {
     symbol: status.symbol,
-    chatId: chatId ?? config.telegram.chatId
+    chatId: chatId ?? config.telegram.chatId,
+    executionCount: status.recentExecutions.length
   });
 };

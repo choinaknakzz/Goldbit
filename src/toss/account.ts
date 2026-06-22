@@ -37,6 +37,21 @@ const toNumber = (value: string | number | null | undefined): number => {
   return Number(value);
 };
 
+const getKstDate = (date = new Date()): string => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: config.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+};
+
 export const getAccounts = async (): Promise<TossAccount[]> => {
   const client = await createTossClient();
   const response = await client.get<ApiResponse<TossAccount[]>>("/api/v1/accounts");
@@ -73,11 +88,14 @@ export const getAvailableCash = async (): Promise<AvailableCash> => {
 export const getRecentExecutions = async (symbol: string): Promise<Execution[]> => {
   const accountSeq = await getDefaultAccountSeq();
   const client = await createTossClient(accountSeq);
+  const today = getKstDate();
   const response = await client.get<ApiResponse<OrdersResponse>>("/api/v1/orders", {
     params: {
       status: "CLOSED",
       symbol,
-      limit: 20
+      from: today,
+      to: today,
+      limit: 100
     }
   });
 
