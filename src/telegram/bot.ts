@@ -18,6 +18,15 @@ interface TelegramUpdate {
 
 let lastUpdateId = 0;
 
+const botCommands = [
+  { command: "soxl", description: "현재 SOXL 정보와 최근 체결 확인" },
+  { command: "status", description: "현재 SOXL 정보 확인" },
+  { command: "today", description: "Today Action Plan 후보 수동 전송" },
+  { command: "plan", description: "Today Action Plan 후보 수동 전송" },
+  { command: "candidate", description: "매매 후보 수동 전송" },
+  { command: "help", description: "Goldbit Bot 명령어 안내" }
+];
+
 const sleep = (milliseconds: number): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 };
@@ -82,6 +91,20 @@ const sendHelpMessage = async (chatId?: string): Promise<void> => {
   );
 };
 
+const registerBotCommands = async (): Promise<void> => {
+  try {
+    await callTelegramApi("setMyCommands", {
+      commands: botCommands,
+      scope: { type: "default" }
+    });
+    await writeLog("INFO", "Telegram bot commands registered", { commandCount: botCommands.length });
+  } catch (error) {
+    await writeLog("ERROR", "Telegram bot command registration failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+};
+
 const pollUpdates = async (): Promise<void> => {
   while (true) {
     try {
@@ -115,6 +138,7 @@ export const startBot = async (): Promise<void> => {
     return;
   }
 
+  await registerBotCommands();
   await writeLog("INFO", "Telegram bot started");
   void pollUpdates();
 };
