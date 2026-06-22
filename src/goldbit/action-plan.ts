@@ -2,8 +2,6 @@ import type { OrderCandidate } from "@prisma/client";
 import { config } from "../config.js";
 import { saveCandidate } from "../storage/candidates.js";
 import { writeLog } from "../storage/logs.js";
-import { getAvailableCash } from "../toss/account.js";
-import { getPosition } from "../toss/portfolio.js";
 import { getCurrentPrice } from "../toss/price.js";
 import type { CandidateDraft, OrderSide, OrderType } from "../types/index.js";
 import { sendActionPlanMessage } from "../telegram/message.js";
@@ -56,18 +54,13 @@ const toCandidate = (plan: DailyPlan, order: PlannedOrder): CandidateDraft | nul
 
 const buildPlanFromGoldbitState = async (): Promise<DailyPlan> => {
   const state = readGoldbitState();
-  const availableCash = await getAvailableCash();
-  const position = await getPosition(config.targetSymbol);
-  const currentPrice = await getCurrentPrice(config.targetSymbol);
   const liveStrategy: StrategyConfig = {
     ...state.strategy,
     symbol: "SOXL",
-    cashBalance: availableCash.amount,
-    quantity: Math.floor(position.quantity),
-    averagePrice: position.averagePrice,
     updatedAt: new Date().toISOString()
   };
-  const previousClose = state.previousClose > 0 ? state.previousClose : currentPrice.price;
+  const currentPrice = state.previousClose > 0 ? undefined : await getCurrentPrice(config.targetSymbol);
+  const previousClose = state.previousClose > 0 ? state.previousClose : currentPrice?.price;
   const isFirstReverseDay =
     liveStrategy.mode === "REVERSE" &&
     Boolean(liveStrategy.reverseStartedAt) &&
