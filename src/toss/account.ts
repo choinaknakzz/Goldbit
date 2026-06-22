@@ -26,6 +26,7 @@ interface OrdersResponse {
     price?: string | null;
     orderedAt: string;
     execution?: {
+      filledQuantity?: string | null;
       averageFilledPrice?: string | null;
       filledAt?: string | null;
     };
@@ -121,19 +122,22 @@ export const getRecentExecutions = async (symbol: string): Promise<Execution[]> 
     }
   });
 
-  const executions = response.data.result.orders.map((order) => {
-    const executedAt = order.execution?.filledAt ?? order.orderedAt;
+  const executions = response.data.result.orders
+    .filter((order) => Boolean(order.execution?.filledAt))
+    .map((order) => {
+      const executedAt = order.execution?.filledAt as string;
 
-    return {
-    id: order.orderId,
-    symbol: order.symbol,
-    side: order.side,
-    quantity: toNumber(order.quantity),
-    price: toNumber(order.execution?.averageFilledPrice ?? order.price),
-      executedAt,
-      tradingDate: getNewYorkDate(executedAt)
-    };
-  });
+      return {
+        id: order.orderId,
+        symbol: order.symbol,
+        side: order.side,
+        quantity: toNumber(order.execution?.filledQuantity ?? order.quantity),
+        price: toNumber(order.execution?.averageFilledPrice),
+        executedAt,
+        orderedAt: order.orderedAt,
+        tradingDate: getNewYorkDate(executedAt)
+      };
+    });
   const latestTradingDate = executions
     .map((execution) => execution.tradingDate)
     .filter((tradingDate): tradingDate is string => Boolean(tradingDate))

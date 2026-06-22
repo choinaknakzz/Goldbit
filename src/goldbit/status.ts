@@ -30,9 +30,33 @@ const quantity = (value: number): string => {
   });
 };
 
+const formatDateTime = (dateText: string, timeZone: string): string => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(dateText));
+
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+
+  return `${month}/${day} ${hour}:${minute}`;
+};
+
+const formatExecutedAt = (dateText: string): string => {
+  const et = formatDateTime(dateText, "America/New_York");
+  const kst = formatDateTime(dateText, config.timezone);
+  return `${et} ET · ${kst} KST`;
+};
+
 const formatExecutionLine = (execution: Execution): string => {
   const price = execution.price ? money(execution.price) : "N/A";
-  return `- ${execution.side} ${quantity(execution.quantity)}주 @ ${price} (${execution.executedAt})`;
+  return `- ${execution.side} ${quantity(execution.quantity)}주 @ ${price} (${formatExecutedAt(execution.executedAt)})`;
 };
 
 export const getSoxlStatus = async (symbol = config.targetSymbol): Promise<SoxlStatus> => {
@@ -65,7 +89,7 @@ export const renderSoxlStatusMessage = (status: SoxlStatus): string => {
   const executionLines =
     status.recentExecutions.length > 0
       ? status.recentExecutions.map(formatExecutionLine)
-      : ["- 최근 10일 내 주문/체결 내역 없음"];
+      : ["- 최근 10일 내 체결 내역 없음"];
 
   return [
     "[Goldbit SOXL 현재 정보]",
