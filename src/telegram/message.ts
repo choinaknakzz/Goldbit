@@ -1,6 +1,7 @@
 import type { OrderCandidate } from "@prisma/client";
 import { config } from "../config.js";
 import { writeLog } from "../storage/logs.js";
+import type { DailyPlan } from "../goldbit/mechanism-types.js";
 
 interface TelegramApiResponse<T> {
   ok: boolean;
@@ -110,5 +111,87 @@ export const sendTextMessage = async (message: string, chatId = config.telegram.
   await callTelegramApi("sendMessage", {
     chat_id: chatId,
     text: message
+  });
+};
+
+const formatMoney = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return "N/A";
+  return `$${value.toFixed(2)}`;
+};
+
+const formatOrderLine = (candidate: OrderCandidate, index: number): string => {
+  return [
+    `${index + 1}. ${candidate.side} ${candidate.orderType}`,
+    `${candidate.quantity.toFixed(0)}주`,
+    `@ ${formatMoney(candidate.estimatedPrice)}`,
+    candidate.estimatedAmount ? `약 ${formatMoney(candidate.estimatedAmount)}` : undefined
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
+
+export const renderActionPlanMessage = (plan: DailyPlan, candidates: OrderCandidate[]): string => {
+  const buyLines = candidates
+    .filter((candidate) => candidate.side === "BUY")
+    .map(formatOrderLine);
+  const sellLines = candidates
+    .filter((candidate) => candidate.side === "SELL")
+    .map(formatOrderLine);
+
+  return [
+    "[Goldbit Today Action Plan]",
+    "",
+    `날짜: ${plan.date}`,
+    `종목: ${plan.symbol}`,
+    `모드: ${plan.mode} / ${plan.phase}`,
+    `T값: ${plan.tValue.toFixed(4)}`,
+    `보유수량: ${plan.quantity}주`,
+    `평균단가: ${formatMoney(plan.averagePrice)}`,
+    `현금: ${formatMoney(plan.cashBalance)}`,
+    "",
+    `별지점: ${formatMoney(plan.starPrice)}`,
+    `매수점: ${formatMoney(plan.buyPrice)}`,
+    `지정가 매도: ${formatMoney(plan.limitSellPrice)}`,
+    "",
+    "매수 후보:",
+    ...(buyLines.length > 0 ? buyLines : ["- 없음"]),
+    "",
+    "매도 후보:",
+    ...(sellLines.length > 0 ? sellLines : ["- 없음"]),
+    ...(plan.warnings.length > 0 ? ["", "주의:", ...plan.warnings.map((warning) => `- ${warning}`)] : []),
+    "",
+    `승인 가능 시간: ${config.approvalExpireMinutes}분`
+  ].join("\n");
+};
+
+export const sendActionPlanMessage = async (plan: DailyPlan, candidates: OrderCandidate[]): Promise<void> => {
+  if (!config.telegram.botToken || !config.telegram.chatId) {
+    await writeLog("WARN", "Telegram configuration missing; action plan message not sent");
+    return;
+  }
+
+  const keyboard = candidates.flatMap((candidate, index) => [
+    [
+      {
+        text: `승인 ${index + 1}`,
+        callback_data: `approve:${candidate.id}`
+      },
+      {
+        text: `취소 ${index + 1}`,
+        callback_data: `cancel:${candidate.id}`
+      }
+    ]
+  ]);
+
+  await callTelegramApi("sendMessage", {
+    chat_id: config.telegram.chatId,
+    text: renderActionPlanMessage(plan, candidates),
+    ...(keyboard.length > 0
+      ? {
+          reply_markup: {
+            inline_keyboard: keyboard
+          }
+        }
+      : {})
   });
 };

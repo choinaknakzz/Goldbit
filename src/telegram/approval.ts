@@ -3,7 +3,7 @@ import { assertTargetSymbol, config } from "../config.js";
 import { findCandidate, markCandidateStatus } from "../storage/candidates.js";
 import { saveExecution } from "../storage/executions.js";
 import { writeLog } from "../storage/logs.js";
-import { buildLocOrderRequest, placeOrder } from "../toss/order.js";
+import { placeOrder } from "../toss/order.js";
 import { parseTossError } from "../toss/client.js";
 import type { OrderRequest } from "../types/index.js";
 import { callTelegramApi, sendTextMessage } from "./message.js";
@@ -36,15 +36,19 @@ const assertExecutableCandidate = async (candidate: OrderCandidate): Promise<voi
 };
 
 const createOrderRequest = (candidate: OrderCandidate): OrderRequest => {
-  return buildLocOrderRequest({
+  return {
     symbol: candidate.symbol,
-    side: "BUY",
-    orderType: "LOC",
+    side: candidate.side as OrderRequest["side"],
+    orderType: candidate.orderType as OrderRequest["orderType"],
     quantity: candidate.quantity,
     limitPrice: candidate.estimatedPrice ?? undefined,
     accountId: config.toss.accountId,
     clientOrderId: candidate.id.replace(/[^a-zA-Z0-9-_]/g, "_").slice(0, 36)
-  });
+  };
+};
+
+const orderLabel = (candidate: OrderCandidate): string => {
+  return `${candidate.orderType} ${candidate.side}`;
 };
 
 export const approveCandidate = async (candidateId: string): Promise<void> => {
@@ -80,8 +84,8 @@ export const approveCandidate = async (candidateId: string): Promise<void> => {
         "[Goldbit 주문 실행 완료]",
         "",
         `종목: ${candidate.symbol}`,
-        `구분: ${candidate.orderType} 매수`,
-        `수량: ${candidate.quantity.toFixed(2)}주`,
+        `구분: ${orderLabel(candidate)}`,
+        `수량: ${candidate.quantity.toFixed(0)}주`,
         "상태: 주문 요청 성공",
         `주문 ID: ${orderResult.brokerOrderId ?? "N/A"}`
       ].join("\n")
@@ -105,8 +109,8 @@ export const approveCandidate = async (candidateId: string): Promise<void> => {
         "[Goldbit 주문 실행 실패]",
         "",
         `종목: ${candidate.symbol}`,
-        `구분: ${candidate.orderType} 매수`,
-        `수량: ${candidate.quantity.toFixed(2)}주`,
+        `구분: ${orderLabel(candidate)}`,
+        `수량: ${candidate.quantity.toFixed(0)}주`,
         `사유: ${errorMessage}`
       ].join("\n")
     );

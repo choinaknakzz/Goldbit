@@ -1,13 +1,13 @@
 import cron from "node-cron";
 import { config } from "./config.js";
-import { createAndSendCandidate } from "./goldbit/candidate.js";
+import { createAndSendGoldbitActionPlan } from "./goldbit/action-plan.js";
 import { writeLog } from "./storage/logs.js";
 
 export const runScheduledCandidate = async (): Promise<void> => {
   try {
-    await createAndSendCandidate(config.targetSymbol);
+    await createAndSendGoldbitActionPlan();
   } catch (error) {
-    await writeLog("ERROR", "candidate creation failed", {
+    await writeLog("ERROR", "Goldbit action plan creation failed", {
       error: error instanceof Error ? error.message : String(error)
     });
   }
@@ -27,6 +27,7 @@ export const startScheduler = async (): Promise<void> => {
   await writeLog("INFO", "scheduler started", {
     schedule: "0 17 * * *",
     timezone: config.timezone,
-    targetSymbol: config.targetSymbol
+    targetSymbol: config.targetSymbol,
+    source: "Goldbit Today Action Plan"
   });
 };

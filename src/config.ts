@@ -21,12 +21,14 @@ const listFromEnv = (name: string): string[] => {
 
 const telegramAllowedChatIds = listFromEnv("TELEGRAM_ALLOWED_CHAT_IDS");
 const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? telegramAllowedChatIds[0] ?? "";
+const defaultGoldbitStateDbPath = "D:\\Goldbit\\prisma\\dev.db";
 
 export const config = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   timezone: process.env.APP_TIMEZONE ?? "Asia/Seoul",
   targetSymbol: process.env.TARGET_SYMBOL ?? "SOXL",
   approvalExpireMinutes: numberFromEnv("ORDER_APPROVAL_EXPIRE_MINUTES", 60),
+  goldbitStateDbPath: process.env.GOLDBIT_STATE_DB_PATH ?? defaultGoldbitStateDbPath,
   toss: {
     apiBaseUrl: process.env.TOSS_API_BASE_URL ?? "",
     appKey: process.env.TOSS_APP_KEY ?? "",

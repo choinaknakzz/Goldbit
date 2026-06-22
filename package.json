@@ -10,6 +10,7 @@
     "build": "tsc",
     "bot": "tsx src/index.ts bot",
     "candidate": "tsx src/index.ts candidate",
+    "plan": "tsx src/index.ts candidate",
     "soxl": "tsx src/index.ts soxl",
     "prisma:generate": "prisma generate",
     "preprisma:migrate": "node scripts/ensure-sqlite-db.mjs",

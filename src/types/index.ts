@@ -1,5 +1,5 @@
 export type OrderSide = "BUY" | "SELL";
-export type OrderType = "LOC" | "LIMIT" | "MARKET";
+export type OrderType = "LOC" | "MOC" | "LIMIT" | "MARKET";
 export type CandidateStatus = "PENDING" | "APPROVED" | "CANCELED" | "EXPIRED" | "EXECUTED" | "FAILED";
 export type ExecutionStatus = "SUCCESS" | "FAILED";
 

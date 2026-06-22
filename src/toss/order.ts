@@ -11,34 +11,32 @@ interface OrderResponse {
   clientOrderId?: string | null;
 }
 
-export const buildLocOrderRequest = (request: OrderRequest): OrderRequest => {
-  return {
-    ...request,
-    orderType: "LOC"
-  };
-};
-
 export const placeOrder = async (orderRequest: OrderRequest): Promise<OrderResult> => {
   const accountSeq = orderRequest.accountId || (await getDefaultAccountSeq());
   const client = await createTossClient(accountSeq);
   const quantity = Math.floor(orderRequest.quantity);
 
   if (quantity < 1) {
-    throw new Error("Toss LOC quantity must be at least 1 whole share.");
+    throw new Error("Toss order quantity must be at least 1 whole share.");
   }
 
-  if (!orderRequest.limitPrice) {
-    throw new Error("LOC order requires limitPrice.");
+  if (orderRequest.orderType === "MOC") {
+    throw new Error("MOC order is not enabled. Confirm Toss Securities support before live ordering.");
+  }
+
+  if ((orderRequest.orderType === "LOC" || orderRequest.orderType === "LIMIT") && !orderRequest.limitPrice) {
+    throw new Error(`${orderRequest.orderType} order requires limitPrice.`);
   }
 
   const payload = {
     clientOrderId: orderRequest.clientOrderId,
     symbol: orderRequest.symbol,
     side: orderRequest.side,
-    orderType: "LIMIT",
-    timeInForce: "CLS",
+    orderType: orderRequest.orderType === "MARKET" ? "MARKET" : "LIMIT",
+    ...(orderRequest.orderType === "LOC" ? { timeInForce: "CLS" } : {}),
+    ...(orderRequest.orderType === "LIMIT" ? { timeInForce: "DAY" } : {}),
     quantity: String(quantity),
-    price: String(orderRequest.limitPrice)
+    ...(orderRequest.limitPrice ? { price: String(orderRequest.limitPrice) } : {})
   };
 
   const response = await client.post<ApiResponse<OrderResponse>>("/api/v1/orders", payload);

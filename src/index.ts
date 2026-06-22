@@ -1,4 +1,4 @@
-import { createAndSendCandidate } from "./goldbit/candidate.js";
+import { createAndSendGoldbitActionPlan } from "./goldbit/action-plan.js";
 import { sendSoxlStatus } from "./goldbit/status.js";
 import { startScheduler } from "./scheduler.js";
 import { disconnectPrisma } from "./storage/prisma.js";
@@ -11,9 +11,12 @@ const mode = (process.argv[2] ?? "dev") as Mode;
 
 const run = async (): Promise<void> => {
   if (mode === "candidate") {
-    await writeLog("INFO", "manual candidate command started");
-    const candidateId = await createAndSendCandidate();
-    await writeLog("INFO", "manual candidate command finished", { candidateId });
+    await writeLog("INFO", "manual Goldbit action plan command started");
+    const { plan, candidates } = await createAndSendGoldbitActionPlan();
+    await writeLog("INFO", "manual Goldbit action plan command finished", {
+      date: plan.date,
+      candidateCount: candidates.length
+    });
     return;
   }
 

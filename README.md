@@ -77,6 +77,8 @@ cd "D:\Goldbit Automation Lab"
 npm run candidate
 ```
 
+`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고, 현재 Toss 계좌의 SOXL 보유수량/평균단가/USD 매수가능금액을 반영해 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다.
+
 SOXL 현재 정보 Telegram 전송:
 
 ```powershell
@@ -96,6 +98,8 @@ Bot 실행 중에는 Telegram에서 `/soxl` 또는 `/status`를 보내 현재 SO
 ```powershell
 npm run dev
 ```
+
+Scheduler는 매일 17:00 KST에 Goldbit Today Action Plan 기준 매매 후보를 생성해 Telegram으로 보냅니다.
 
 운영 실행:
 
