@@ -1,9 +1,17 @@
 import type { OrderRequest, OrderResult } from "../types/index.js";
-import { TossEndpointNotConfiguredError } from "./client.js";
+import { getDefaultAccountSeq } from "./account.js";
+import { createTossClient } from "./client.js";
+
+interface ApiResponse<T> {
+  result: T;
+}
+
+interface OrderResponse {
+  orderId: string;
+  clientOrderId?: string | null;
+}
 
 export const buildLocOrderRequest = (request: OrderRequest): OrderRequest => {
-  // TODO: Confirm whether LOC orders are supported by Toss Securities OpenAPI.
-  // TODO: Replace or adapt this structure if official documentation requires LIMIT or another order type.
   return {
     ...request,
     orderType: "LOC"
@@ -11,8 +19,33 @@ export const buildLocOrderRequest = (request: OrderRequest): OrderRequest => {
 };
 
 export const placeOrder = async (orderRequest: OrderRequest): Promise<OrderResult> => {
-  // TODO: Replace with official Toss Securities OpenAPI endpoint.
-  // TODO: Confirm request and response schema from Toss Securities OpenAPI documentation.
-  void orderRequest;
-  throw new TossEndpointNotConfiguredError("placeOrder");
+  const accountSeq = orderRequest.accountId || (await getDefaultAccountSeq());
+  const client = await createTossClient(accountSeq);
+  const quantity = Math.floor(orderRequest.quantity);
+
+  if (quantity < 1) {
+    throw new Error("Toss LOC quantity must be at least 1 whole share.");
+  }
+
+  if (!orderRequest.limitPrice) {
+    throw new Error("LOC order requires limitPrice.");
+  }
+
+  const payload = {
+    clientOrderId: orderRequest.clientOrderId,
+    symbol: orderRequest.symbol,
+    side: orderRequest.side,
+    orderType: "LIMIT",
+    timeInForce: "CLS",
+    quantity: String(quantity),
+    price: String(orderRequest.limitPrice)
+  };
+
+  const response = await client.post<ApiResponse<OrderResponse>>("/api/v1/orders", payload);
+
+  return {
+    brokerOrderId: response.data.result.orderId,
+    status: "SUCCESS",
+    raw: response.data
+  };
 };

@@ -1,9 +1,36 @@
 import type { Position } from "../types/index.js";
-import { TossEndpointNotConfiguredError } from "./client.js";
+import { getDefaultAccountSeq } from "./account.js";
+import { createTossClient } from "./client.js";
+
+interface ApiResponse<T> {
+  result: T;
+}
+
+interface HoldingsOverview {
+  items: Array<{
+    symbol: string;
+    quantity: string;
+    averagePurchasePrice: string;
+  }>;
+}
+
+const toNumber = (value: string | number | null | undefined): number => {
+  if (value === null || value === undefined || value === "") return 0;
+  return Number(value);
+};
 
 export const getPosition = async (symbol: string): Promise<Position> => {
-  // TODO: Replace with official Toss Securities OpenAPI endpoint.
-  // TODO: Confirm request and response schema from Toss Securities OpenAPI documentation.
-  void symbol;
-  throw new TossEndpointNotConfiguredError("getPosition");
+  const accountSeq = await getDefaultAccountSeq();
+  const client = await createTossClient(accountSeq);
+  const response = await client.get<ApiResponse<HoldingsOverview>>("/api/v1/holdings", {
+    params: { symbol }
+  });
+
+  const item = response.data.result.items.find((holding) => holding.symbol.toUpperCase() === symbol.toUpperCase());
+
+  return {
+    symbol,
+    quantity: toNumber(item?.quantity),
+    averagePrice: toNumber(item?.averagePurchasePrice)
+  };
 };

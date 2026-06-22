@@ -40,7 +40,7 @@ TARGET_SYMBOL=SOXL
 ORDER_APPROVAL_EXPIRE_MINUTES=60
 DATABASE_URL="file:./dev.db"
 
-TOSS_API_BASE_URL=
+TOSS_API_BASE_URL=https://openapi.tossinvest.com
 TOSS_APP_KEY=
 TOSS_APP_SECRET=
 TOSS_ACCESS_TOKEN=
@@ -127,36 +127,29 @@ npm run prisma:studio
 - order execution succeeded
 - order execution failed
 
-## 실제 Toss Securities API 연결 시 수정할 파일
+## 실제 Toss Securities API 연결 파일
 
-- `src/toss/client.ts`: 공통 base URL, 인증 헤더, 에러 파싱
-- `src/toss/auth.ts`: 토큰 갱신 endpoint와 스키마
-- `src/toss/account.ts`: 주문 가능 현금, 최근 체결 내역 조회
-- `src/toss/portfolio.ts`: SOXL 보유 수량과 평균 단가 조회
-- `src/toss/price.ts`: SOXL 현재가 조회
-- `src/toss/order.ts`: LOC 또는 대체 주문 요청 생성과 주문 실행
+- `src/toss/client.ts`: 공통 base URL, OAuth Bearer 인증 헤더, 계좌 헤더, 에러 파싱
+- `src/toss/auth.ts`: `POST /oauth2/token` Client Credentials 토큰 발급
+- `src/toss/account.ts`: `GET /api/v1/accounts`, `GET /api/v1/buying-power`, `GET /api/v1/orders`
+- `src/toss/portfolio.ts`: `GET /api/v1/holdings`
+- `src/toss/price.ts`: `GET /api/v1/prices`
+- `src/toss/order.ts`: `POST /api/v1/orders`
 
 ## 공식 문서 확인 필요 항목
 
-- Toss Securities OpenAPI base URL
-- 인증 방식과 토큰 갱신 방식
-- 계좌 ID 형식
-- 주문 가능 현금 조회 endpoint
-- 해외 주식 보유 종목 조회 endpoint
-- SOXL 현재가 조회 endpoint
-- 최근 주문 또는 체결 내역 조회 endpoint
-- 해외 주식 주문 endpoint
-- LOC 주문 지원 여부
-- LOC 미지원 시 LIMIT 등 대체 주문 타입의 요청 필드
-- 주문 응답의 broker order id 필드
+- 토스증권 OpenAPI 공식 JSON 변경 여부
+- `TOSS_ACCOUNT_ID`를 수동 지정할 경우 `GET /api/v1/accounts`의 `accountSeq` 값과 일치하는지
+- SOXL LOC 주문 시 `LIMIT + CLS` 조합의 운영 가능 시간
+- 주문 수량은 공식 문서상 정수 문자열만 가능하므로 소수점 후보 수량을 어떻게 정수화할지
+- 주문 응답의 `orderId`를 운영상 어떤 식별자로 보관할지
 
 ## 아직 TODO인 부분
 
-- Toss endpoint와 request/response schema 확정
 - Goldbit V4 실제 계산식 이식
-- LOC 주문 지원 여부 확인 및 대체 주문 타입 결정
-- 실제 Toss 응답을 `OrderExecution.responsePayload`에 원문 JSON으로 저장하는 매핑
+- SOXL 후보 수량 정수화 정책 확정
+- 실주문 전 최소 주문 금액, 가격 괴리율, 장시간 검증 같은 운영 guardrail 추가 여부 결정
 
 ## 주의사항
 
-승인 전에는 주문을 실행하지 않습니다. 이미 실행, 만료, 취소된 후보는 다시 실행하지 않습니다. v1은 SOXL만 허용합니다. Toss API endpoint는 임의로 추정하지 않았고, 공식 문서 확인 전까지 주문 API는 실패로 기록됩니다.
+승인 전에는 주문을 실행하지 않습니다. 이미 실행, 만료, 취소된 후보는 다시 실행하지 않습니다. v1은 SOXL만 허용합니다. Toss API endpoint는 공식 OpenAPI JSON 기준으로 연결했습니다. LOC는 공식 예시의 `LIMIT + CLS` 조합으로 요청합니다.

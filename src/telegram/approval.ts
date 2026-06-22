@@ -42,7 +42,8 @@ const createOrderRequest = (candidate: OrderCandidate): OrderRequest => {
     orderType: "LOC",
     quantity: candidate.quantity,
     limitPrice: candidate.estimatedPrice ?? undefined,
-    accountId: config.toss.accountId
+    accountId: config.toss.accountId,
+    clientOrderId: candidate.id.replace(/[^a-zA-Z0-9-_]/g, "_").slice(0, 36)
   });
 };
 

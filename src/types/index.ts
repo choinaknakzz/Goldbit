@@ -37,6 +37,7 @@ export interface OrderRequest {
   quantity: number;
   limitPrice?: number;
   accountId: string;
+  clientOrderId?: string;
 }
 
 export interface OrderResult {

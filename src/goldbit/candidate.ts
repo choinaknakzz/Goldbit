@@ -23,12 +23,12 @@ const optionalTossCall = async <T>(label: string, call: () => Promise<T>): Promi
 export const buildStrategyInput = async (symbol = config.targetSymbol): Promise<StrategyInput> => {
   assertTargetSymbol(symbol);
 
-  const [availableCash, position, currentPrice, recentExecutions] = await Promise.all([
-    optionalTossCall<AvailableCash>("getAvailableCash", () => getAvailableCash()),
-    optionalTossCall<Position>("getPosition", () => getPosition(symbol)),
-    optionalTossCall<CurrentPrice>("getCurrentPrice", () => getCurrentPrice(symbol)),
-    optionalTossCall<Execution[]>("getRecentExecutions", () => getRecentExecutions(symbol))
-  ]);
+  const availableCash = await optionalTossCall<AvailableCash>("getAvailableCash", () => getAvailableCash());
+  const position = await optionalTossCall<Position>("getPosition", () => getPosition(symbol));
+  const currentPrice = await optionalTossCall<CurrentPrice>("getCurrentPrice", () => getCurrentPrice(symbol));
+  const recentExecutions = await optionalTossCall<Execution[]>("getRecentExecutions", () =>
+    getRecentExecutions(symbol)
+  );
 
   return {
     symbol,
