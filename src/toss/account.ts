@@ -22,6 +22,8 @@ interface OrdersResponse {
     orderId: string;
     symbol: string;
     side: "BUY" | "SELL";
+    orderType?: "MARKET" | "LIMIT" | string | null;
+    timeInForce?: "DAY" | "CLS" | string | null;
     quantity: string;
     price?: string | null;
     orderedAt: string;
@@ -71,6 +73,13 @@ const getNewYorkDate = (dateText: string): string => {
   const day = parts.find((part) => part.type === "day")?.value;
 
   return `${year}-${month}-${day}`;
+};
+
+const getExecutionOrderType = (order: OrdersResponse["orders"][number]): Execution["orderType"] | undefined => {
+  if (order.orderType === "MARKET") return "MARKET";
+  if (order.orderType === "LIMIT" && order.timeInForce === "CLS") return "LOC";
+  if (order.orderType === "LIMIT") return "LIMIT";
+  return undefined;
 };
 
 export const getAccounts = async (): Promise<TossAccount[]> => {
@@ -131,6 +140,7 @@ export const getRecentExecutions = async (symbol: string): Promise<Execution[]> 
         id: order.orderId,
         symbol: order.symbol,
         side: order.side,
+        orderType: getExecutionOrderType(order),
         quantity: toNumber(order.execution?.filledQuantity ?? order.quantity),
         price: toNumber(order.execution?.averageFilledPrice),
         executedAt,

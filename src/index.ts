@@ -1,11 +1,12 @@
 import { createAndSendGoldbitActionPlan } from "./goldbit/action-plan.js";
+import { syncFilledOrdersToGoldbitState } from "./goldbit/trade-sync.js";
 import { sendSoxlStatus } from "./goldbit/status.js";
 import { startScheduler } from "./scheduler.js";
 import { disconnectPrisma } from "./storage/prisma.js";
 import { writeLog } from "./storage/logs.js";
 import { startBot } from "./telegram/bot.js";
 
-type Mode = "dev" | "bot" | "candidate" | "soxl";
+type Mode = "dev" | "bot" | "candidate" | "soxl" | "sync-trades";
 
 const mode = (process.argv[2] ?? "dev") as Mode;
 
@@ -24,6 +25,17 @@ const run = async (): Promise<void> => {
     await writeLog("INFO", "manual SOXL status command started");
     await sendSoxlStatus();
     await writeLog("INFO", "manual SOXL status command finished");
+    return;
+  }
+
+  if (mode === "sync-trades") {
+    await writeLog("INFO", "manual Goldbit filled order sync started");
+    const result = await syncFilledOrdersToGoldbitState();
+    await writeLog("INFO", "manual Goldbit filled order sync finished", {
+      tradingDate: result.tradingDate,
+      createdTrades: result.createdTrades,
+      tEventApplied: result.tEventApplied
+    });
     return;
   }
 
@@ -50,7 +62,7 @@ run()
     process.exitCode = 1;
   })
   .finally(async () => {
-    if (mode === "candidate" || mode === "soxl") {
+    if (mode === "candidate" || mode === "soxl" || mode === "sync-trades") {
       await disconnectPrisma();
     }
   });

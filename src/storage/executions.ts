@@ -31,3 +31,19 @@ export const saveExecution = async (input: SaveExecutionInput): Promise<OrderExe
     }
   });
 };
+
+export const findSuccessfulExecutionsByBrokerOrderIds = async (
+  brokerOrderIds: string[]
+): Promise<OrderExecution[]> => {
+  const ids = [...new Set(brokerOrderIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  return prisma.orderExecution.findMany({
+    where: {
+      status: "SUCCESS",
+      brokerOrderId: {
+        in: ids
+      }
+    }
+  });
+};

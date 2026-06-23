@@ -25,6 +25,7 @@ export interface Execution {
   id: string;
   symbol: string;
   side: OrderSide;
+  orderType?: OrderType;
   quantity: number;
   price?: number;
   executedAt: string;

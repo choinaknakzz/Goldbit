@@ -2,6 +2,12 @@ export type Division = 20 | 40;
 export type StrategyMode = "NORMAL" | "REVERSE";
 export type TradeType = "BUY" | "SELL";
 export type GoldbitOrderType = "LOC" | "MOC" | "LIMIT";
+export type NormalTEvent =
+  | "FULL_BUY"
+  | "HALF_BUY"
+  | "QUARTER_SELL"
+  | "LIMIT_SELL_AND_FULL_LOC_BUY"
+  | "LIMIT_SELL_AND_HALF_LOC_BUY";
 
 export interface StrategyConfig {
   id: string;
@@ -58,14 +64,68 @@ export interface DailyPlanSnapshot {
 
 export interface Trade {
   id: string;
+  strategyId?: string;
+  type?: TradeType;
+  orderType?: GoldbitOrderType;
+  price?: number;
+  quantity?: number;
+  amount?: number;
+  fee?: number;
+  tBefore?: number;
+  tAfter?: number;
+  cashBefore?: number;
+  cashAfter?: number;
+  quantityBefore?: number;
+  quantityAfter?: number;
+  averagePriceBefore?: number;
+  averagePriceAfter?: number;
+  mode?: StrategyMode;
+  reason?: string;
   tradedAt: string;
+  memo?: string;
+}
+
+export interface TradeInput {
+  type: TradeType;
+  orderType: GoldbitOrderType;
+  price: number;
+  quantity: number;
+  fee: number;
+  reason: string;
+  tradedAt: string;
+  memo?: string;
+}
+
+export interface DailyTEventInput {
+  date: string;
+  mode: StrategyMode;
+  normalTEvent?: NormalTEvent;
+  reverseTEvent?: "SELL" | "BUY";
+  memo?: string;
+}
+
+export interface DailyTEvent extends DailyTEventInput {
+  id: string;
+  tBefore: number;
+  tAfter: number;
+}
+
+export interface DailyTEventSuggestion {
+  input: DailyTEventInput | null;
+  confidence: number;
+  reason: string;
+  detectedSummary: string[];
 }
 
 export interface GoldbitLocalState {
   strategy: StrategyConfig;
   trades: Trade[];
+  tEvents: DailyTEvent[];
   dailyPlanSnapshots: DailyPlanSnapshot[];
   lastFiveCloses: number[];
   closeRecords: Array<{ date: string; close: number; source?: string }>;
   previousClose: number;
+  feeRatePercent: number;
+  pendingTrades?: unknown[];
+  cycleArchives?: unknown[];
 }

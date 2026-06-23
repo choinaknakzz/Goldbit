@@ -11,6 +11,7 @@ v1은 개인용 단일 프로세스 자동화만 다룹니다. 웹 UI, 대시보
 - Telegram inline button 승인/취소
 - 승인 후 `placeOrder()` 호출
 - 매일 17:00 Asia/Seoul 스케줄 실행
+- 매일 05:30 Asia/Seoul 체결 주문 기반 Trade/T값 동기화
 - 수동 후보 생성 명령
 
 ## 설치
@@ -85,6 +86,14 @@ SOXL 현재 정보 Telegram 전송:
 npm run soxl
 ```
 
+체결 주문을 Goldbit Trade/T값에 수동 동기화:
+
+```powershell
+npm run sync:trades
+```
+
+`npm run sync:trades`는 Toss 최근 체결 중 가장 최근 미국 거래일 묶음을 읽고, Goldbit state의 `trades`와 `tEvents`를 중복 없이 갱신합니다. 매도 체결 수량이 Goldbit state의 현재 보유수량보다 크면 음수 보유가 생기지 않도록 해당 체결은 스킵하고 로그에 남깁니다.
+
 Bot만 실행:
 
 ```powershell
@@ -99,7 +108,7 @@ Bot 실행 중에는 Telegram에서 `/soxl` 또는 `/status`를 보내 현재 SO
 npm run dev
 ```
 
-Scheduler는 매일 17:00 KST에 Goldbit Today Action Plan 기준 매매 후보를 생성해 Telegram으로 보냅니다. 승인 전에는 주문을 실행하지 않습니다.
+Scheduler는 매일 05:30 KST에 체결 주문을 Goldbit Trade/T값으로 동기화하고, 매일 17:00 KST에 Goldbit Today Action Plan 기준 매매 후보를 생성해 Telegram으로 보냅니다. 승인 전에는 주문을 실행하지 않습니다.
 
 운영 실행:
 
@@ -118,7 +127,7 @@ npm run build
 npm run service:install
 ```
 
-등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 숨김 런처로 실행되어 CMD 창을 띄우지 않습니다. 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 로그는 `automation-service.log`에 저장됩니다.
+등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 숨김 PowerShell 프로세스에서 Node를 직접 실행해 CMD 창을 띄우지 않습니다. 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 로그는 `automation-service.log`에 저장됩니다.
 
 작업 스케줄러 등록을 해제하려면 아래 명령을 실행합니다.
 

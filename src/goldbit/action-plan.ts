@@ -7,7 +7,7 @@ import type { CandidateDraft, OrderSide, OrderType } from "../types/index.js";
 import { sendActionPlanMessage } from "../telegram/message.js";
 import { generateNormalDailyPlan, generateReverseDailyPlan } from "./mechanism.js";
 import type { DailyPlan, PlannedOrder, StrategyConfig } from "./mechanism-types.js";
-import { readGoldbitState } from "./state.js";
+import { readGoldbitState, saveGoldbitPlanSnapshot } from "./state.js";
 
 type PlannedOrderType = Extract<OrderType, PlannedOrder["orderType"]>;
 
@@ -80,6 +80,7 @@ export const createAndSendGoldbitActionPlan = async (chatId?: string): Promise<{
   candidates: OrderCandidate[];
 }> => {
   const plan = await buildPlanFromGoldbitState();
+  const snapshotSaved = saveGoldbitPlanSnapshot(plan);
   const drafts = [...plan.buyOrders, ...plan.sellOrders]
     .map((order, index) => toCandidate(plan, order, index + 1))
     .filter((candidate): candidate is CandidateDraft => Boolean(candidate));
@@ -94,7 +95,8 @@ export const createAndSendGoldbitActionPlan = async (chatId?: string): Promise<{
     date: plan.date,
     mode: plan.mode,
     phase: plan.phase,
-    candidateCount: candidates.length
+    candidateCount: candidates.length,
+    snapshotSaved
   });
 
   return { plan, candidates };
