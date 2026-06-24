@@ -17,6 +17,13 @@ interface BuyingPowerResponse {
   cashBuyingPower: string;
 }
 
+interface CommissionResponse {
+  marketCountry: string;
+  commissionRate: string;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
 interface OrdersResponse {
   orders: Array<{
     orderId: string;
@@ -113,6 +120,21 @@ export const getAvailableCash = async (): Promise<AvailableCash> => {
     currency: response.data.result.currency,
     amount: toNumber(response.data.result.cashBuyingPower)
   };
+};
+
+export const getUsCommissionRatePercent = async (): Promise<number | null> => {
+  const accountSeq = await getDefaultAccountSeq();
+  const client = await createTossClient(accountSeq);
+  const response = await client.get<ApiResponse<CommissionResponse[]>>("/api/v1/commissions");
+  const today = getKstDate();
+  const usCommission = response.data.result.find((commission) => {
+    if (commission.marketCountry !== "US") return false;
+    const starts = !commission.startDate || commission.startDate <= today;
+    const ends = !commission.endDate || commission.endDate >= today;
+    return starts && ends;
+  }) ?? response.data.result.find((commission) => commission.marketCountry === "US");
+
+  return usCommission ? toNumber(usCommission.commissionRate) : null;
 };
 
 export const getRecentExecutions = async (symbol: string): Promise<Execution[]> => {

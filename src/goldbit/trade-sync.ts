@@ -1,8 +1,9 @@
 import { config } from "../config.js";
 import { findSuccessfulExecutionsByBrokerOrderIds } from "../storage/executions.js";
 import { writeLog } from "../storage/logs.js";
-import { getRecentExecutions } from "../toss/account.js";
+import { getRecentExecutions, getUsCommissionRatePercent } from "../toss/account.js";
 import type { Execution, OrderRequest, OrderType } from "../types/index.js";
+import { closeCycleAndResetState } from "./cycle.js";
 import {
   applyDailyTEventToStrategy,
   applyTradeToStrategy,
@@ -38,6 +39,8 @@ export interface TradeSyncResult {
   tBefore?: number;
   tAfter?: number;
   tEventReason?: string;
+  cycleClosed: boolean;
+  archivedCycleId?: string;
 }
 
 const brokerMemo = (orderId: string): string => `Toss orderId: ${orderId}`;
@@ -82,7 +85,8 @@ const resolveOrderType = (execution: Execution, request?: OrderRequest): Exclude
 const createTradeInput = (
   execution: Execution,
   state: GoldbitLocalState,
-  localRequest?: OrderRequest
+  localRequest?: OrderRequest,
+  commissionRatePercent = state.feeRatePercent ?? 0
 ): TradeInput | null => {
   const orderType = toGoldbitOrderType(resolveOrderType(execution, localRequest) ?? undefined);
   const price = execution.price ?? 0;
@@ -93,7 +97,7 @@ const createTradeInput = (
   }
 
   const amount = price * quantity;
-  const fee = round(amount * ((state.feeRatePercent ?? 0) / 100));
+  const fee = round(amount * (commissionRatePercent / 100));
 
   return {
     type: execution.side,
@@ -202,6 +206,7 @@ const applyDailyTEventInputToState = (state: GoldbitLocalState, input: DailyTEve
 export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult> => {
   const state = readGoldbitState();
   const executions = await getRecentExecutions(config.targetSymbol);
+  const commissionRatePercent = (await getUsCommissionRatePercent()) ?? state.feeRatePercent ?? 0;
   const tradingDate = executions[0]?.tradingDate;
   const requestMap = await getLocalOrderRequestMap(executions);
   let skippedForInsufficientQuantity = 0;
@@ -210,7 +215,7 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
     .sort((left, right) => left.executedAt.localeCompare(right.executedAt))
     .map((execution) => ({
       execution,
-      input: createTradeInput(execution, state, requestMap.get(execution.id))
+      input: createTradeInput(execution, state, requestMap.get(execution.id), commissionRatePercent)
     }))
     .filter((item): item is { execution: Execution; input: TradeInput } => Boolean(item.input));
   const tradeInputs: Array<{ execution: Execution; input: TradeInput }> = [];
@@ -237,11 +242,20 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
   const hasExistingTEvent = Boolean(existingTEvent);
   let tEventApplied = false;
   let appliedTEvent: DailyTEvent | undefined;
+  let cycleClosed = false;
+  let archivedCycleId: string | undefined;
 
   if (suggestion?.input && !hasExistingTEvent) {
     nextState = applyDailyTEventInputToState(nextState, suggestion.input);
     appliedTEvent = tradingDate ? nextState.tEvents.find((event) => event.date === tradingDate) : undefined;
     tEventApplied = true;
+
+    if (suggestion.input.normalTEvent === "FULL_SELL_CYCLE_CLOSE") {
+      const closedState = closeCycleAndResetState(nextState);
+      archivedCycleId = closedState.cycleArchives[0]?.id;
+      cycleClosed = Boolean(archivedCycleId);
+      nextState = closedState;
+    }
   }
 
   if (tradeInputs.length > 0 || tEventApplied) {
@@ -267,7 +281,9 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
     tAfter: (appliedTEvent ?? existingTEvent)?.tAfter,
     tEventReason: skippedForInsufficientQuantity > 0
       ? `${suggestion?.reason ?? "No T event suggestion."} Skipped ${skippedForInsufficientQuantity} sell execution(s) because Goldbit state quantity was insufficient.`
-      : suggestion?.reason
+      : suggestion?.reason,
+    cycleClosed,
+    archivedCycleId
   };
 
   await writeLog("INFO", "Goldbit filled order sync completed", { ...result });

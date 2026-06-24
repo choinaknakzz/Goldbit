@@ -171,6 +171,7 @@ export const renderTradeSyncMessage = (result: TradeSyncResult): string => {
     ...tradeLines,
     "",
     `T값 변화: ${tLine}`,
+    `Cycle 종료: ${result.cycleClosed ? `예 (${result.archivedCycleId ?? "archived"})` : "아니오"}`,
     ...(result.tEventReason ? ["", `판단 근거: ${result.tEventReason}`] : [])
   ].join("\n");
 };

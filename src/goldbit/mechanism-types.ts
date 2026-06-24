@@ -7,7 +7,8 @@ export type NormalTEvent =
   | "HALF_BUY"
   | "QUARTER_SELL"
   | "LIMIT_SELL_AND_FULL_LOC_BUY"
-  | "LIMIT_SELL_AND_HALF_LOC_BUY";
+  | "LIMIT_SELL_AND_HALF_LOC_BUY"
+  | "FULL_SELL_CYCLE_CLOSE";
 
 export interface StrategyConfig {
   id: string;
@@ -117,6 +118,44 @@ export interface DailyTEventSuggestion {
   detectedSummary: string[];
 }
 
+export interface CycleDailySnapshot {
+  date: string;
+  tradeCount: number;
+  buyAmount: number;
+  sellAmount: number;
+  fee: number;
+  tValue: number;
+  cashBalance: number;
+  quantity: number;
+  averagePrice: number;
+  totalAssets: number;
+}
+
+export interface CycleArchive {
+  id: string;
+  name: string;
+  startedAt: string;
+  endedAt: string;
+  tradeStartDate: string;
+  tradeEndDate: string;
+  initialCapital: number;
+  finalCashBalance: number;
+  finalAveragePrice: number;
+  finalQuantity: number;
+  finalTValue: number;
+  finalTotalAssets: number;
+  realizedPnl: number;
+  assetChange: number;
+  tradeCount: number;
+  buyCount: number;
+  sellCount: number;
+  trades: Trade[];
+  tEvents: DailyTEvent[];
+  closeRecords: Array<{ date: string; close: number; source?: string }>;
+  dailySnapshots: CycleDailySnapshot[];
+  archivedAt: string;
+}
+
 export interface GoldbitLocalState {
   strategy: StrategyConfig;
   trades: Trade[];
@@ -127,5 +166,5 @@ export interface GoldbitLocalState {
   previousClose: number;
   feeRatePercent: number;
   pendingTrades?: unknown[];
-  cycleArchives?: unknown[];
+  cycleArchives: CycleArchive[];
 }

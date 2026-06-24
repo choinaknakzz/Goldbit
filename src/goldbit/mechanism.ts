@@ -108,6 +108,8 @@ export const applyNormalTChange = (currentT: number, eventType: NormalTEvent): n
       return currentT * 0.25 + 1;
     case "LIMIT_SELL_AND_HALF_LOC_BUY":
       return currentT * 0.25 + 0.5;
+    case "FULL_SELL_CYCLE_CLOSE":
+      return 0;
   }
 };
 
@@ -412,8 +414,26 @@ export const suggestDailyTEvent = (
     return { input: null, confidence: 0, reason: "No confirmed trades for this date.", detectedSummary };
   }
 
+  const hasFullSellClose = dayTrades.some(
+    (trade) => trade.type === "SELL" && trade.quantityAfter === 0 && (trade.quantityBefore ?? 0) > 0
+  );
+  const hasBuy = dayTrades.some((trade) => trade.type === "BUY");
+
+  if (hasFullSellClose && !hasBuy) {
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent: "FULL_SELL_CYCLE_CLOSE",
+        memo: "Suggested from full sell fill. Cycle closes when quantity reaches zero."
+      },
+      confidence: 0.95,
+      reason: "Full sell fill was detected and remaining quantity is zero.",
+      detectedSummary
+    };
+  }
+
   if (planSnapshot.plan.mode === "REVERSE") {
-    const hasBuy = dayTrades.some((trade) => trade.type === "BUY");
     const hasSell = dayTrades.some((trade) => trade.type === "SELL");
 
     if (hasBuy) {
