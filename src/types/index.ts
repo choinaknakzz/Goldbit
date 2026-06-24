@@ -1,7 +1,14 @@
 export type OrderSide = "BUY" | "SELL";
 export type OrderType = "LOC" | "MOC" | "LIMIT" | "MARKET";
-export type CandidateStatus = "PENDING" | "APPROVED" | "CANCELED" | "EXPIRED" | "EXECUTED" | "FAILED";
-export type ExecutionStatus = "SUCCESS" | "FAILED";
+export type CandidateStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "SUBMITTED"
+  | "CANCELED"
+  | "EXPIRED"
+  | "EXECUTED"
+  | "FAILED";
+export type ExecutionStatus = "SUCCESS" | "SUBMITTED" | "FAILED";
 
 export interface AvailableCash {
   currency: string;
@@ -46,6 +53,7 @@ export interface OrderRequest {
 
 export interface OrderResult {
   brokerOrderId?: string;
+  accountId?: string;
   status: string;
   raw: unknown;
 }

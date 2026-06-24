@@ -40,7 +40,9 @@ export const findSuccessfulExecutionsByBrokerOrderIds = async (
 
   return prisma.orderExecution.findMany({
     where: {
-      status: "SUCCESS",
+      status: {
+        in: ["SUCCESS", "SUBMITTED"]
+      },
       brokerOrderId: {
         in: ids
       }
