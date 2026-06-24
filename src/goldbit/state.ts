@@ -41,6 +41,7 @@ export const readGoldbitState = (): GoldbitLocalState => {
       previousClose: typeof parsed.previousClose === "number" ? parsed.previousClose : 0,
       feeRatePercent: typeof parsed.feeRatePercent === "number" ? parsed.feeRatePercent : 0,
       pendingTrades: Array.isArray(parsed.pendingTrades) ? parsed.pendingTrades : [],
+      pendingCycleCapitalInput: parsed.pendingCycleCapitalInput,
       cycleArchives: Array.isArray(parsed.cycleArchives) ? parsed.cycleArchives : []
     };
   } finally {

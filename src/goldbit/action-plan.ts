@@ -4,7 +4,7 @@ import { saveCandidate } from "../storage/candidates.js";
 import { writeLog } from "../storage/logs.js";
 import { getCurrentPrice } from "../toss/price.js";
 import type { CandidateDraft, OrderSide, OrderType } from "../types/index.js";
-import { sendActionPlanMessage } from "../telegram/message.js";
+import { sendActionPlanMessage, sendTextMessage } from "../telegram/message.js";
 import { generateNormalDailyPlan, generateReverseDailyPlan } from "./mechanism.js";
 import type { DailyPlan, PlannedOrder, StrategyConfig } from "./mechanism-types.js";
 import { readGoldbitState, saveGoldbitPlanSnapshot } from "./state.js";
@@ -58,6 +58,10 @@ const toCandidate = (plan: DailyPlan, order: PlannedOrder, sequence: number): Ca
 
 const buildPlanFromGoldbitState = async (): Promise<DailyPlan> => {
   const state = readGoldbitState();
+  if (state.pendingCycleCapitalInput) {
+    throw new Error("NEW_CYCLE_CAPITAL_REQUIRED");
+  }
+
   const liveStrategy: StrategyConfig = {
     ...state.strategy,
     symbol: "SOXL",
@@ -75,11 +79,35 @@ const buildPlanFromGoldbitState = async (): Promise<DailyPlan> => {
     : generateNormalDailyPlan(liveStrategy, previousClose);
 };
 
+const sendCapitalRequiredMessage = async (chatId?: string): Promise<void> => {
+  await sendTextMessage(
+    [
+      "[Goldbit 새 사이클 대기]",
+      "",
+      "이전 사이클이 종료되어 새 사이클 총자산 입력이 필요합니다.",
+      "20분할은 고정으로 유지됩니다.",
+      "",
+      "예시:",
+      "/capital 20000"
+    ].join("\n"),
+    chatId
+  );
+};
+
 export const createAndSendGoldbitActionPlan = async (chatId?: string): Promise<{
   plan: DailyPlan;
   candidates: OrderCandidate[];
 }> => {
-  const plan = await buildPlanFromGoldbitState();
+  let plan: DailyPlan;
+  try {
+    plan = await buildPlanFromGoldbitState();
+  } catch (error) {
+    if (error instanceof Error && error.message === "NEW_CYCLE_CAPITAL_REQUIRED") {
+      await sendCapitalRequiredMessage(chatId);
+    }
+    throw error;
+  }
+
   const snapshotSaved = saveGoldbitPlanSnapshot(plan);
   const drafts = [...plan.buyOrders, ...plan.sellOrders]
     .map((order, index) => toCandidate(plan, order, index + 1))

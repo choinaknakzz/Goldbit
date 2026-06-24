@@ -126,13 +126,15 @@ export const createCycleArchive = (state: GoldbitLocalState): CycleArchive | nul
 export const closeCycleAndResetState = (state: GoldbitLocalState): GoldbitLocalState => {
   const archivedCycle = createCycleArchive(state);
   const now = new Date().toISOString();
+  const previousCashBalance = state.strategy.cashBalance;
 
   return {
     ...state,
     strategy: {
       ...state.strategy,
-      initialCapital: state.strategy.cashBalance,
-      cashBalance: state.strategy.cashBalance,
+      division: 20,
+      initialCapital: 0,
+      cashBalance: 0,
       averagePrice: 0,
       quantity: 0,
       tValue: 0,
@@ -144,6 +146,13 @@ export const closeCycleAndResetState = (state: GoldbitLocalState): GoldbitLocalS
     trades: [],
     tEvents: [],
     dailyPlanSnapshots: [],
+    pendingCycleCapitalInput: {
+      requestedAt: now,
+      reason: "CYCLE_CLOSED",
+      archivedCycleId: archivedCycle?.id,
+      previousCashBalance,
+      division: 20
+    },
     cycleArchives: archivedCycle ? [archivedCycle, ...state.cycleArchives] : state.cycleArchives
   };
 };

@@ -42,6 +42,8 @@ export interface TradeSyncResult {
   tEventReason?: string;
   cycleClosed: boolean;
   archivedCycleId?: string;
+  requiresNextCycleCapital?: boolean;
+  previousCashBalance?: number;
 }
 
 const brokerMemo = (orderId: string): string => `Toss orderId: ${orderId}`;
@@ -282,6 +284,8 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
   let appliedTEvent: DailyTEvent | undefined;
   let cycleClosed = false;
   let archivedCycleId: string | undefined;
+  let requiresNextCycleCapital = false;
+  let previousCashBalance: number | undefined;
 
   if (suggestion?.input && !hasExistingTEvent) {
     nextState = applyDailyTEventInputToState(nextState, suggestion.input);
@@ -292,6 +296,8 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
       const closedState = closeCycleAndResetState(nextState);
       archivedCycleId = closedState.cycleArchives[0]?.id;
       cycleClosed = Boolean(archivedCycleId);
+      requiresNextCycleCapital = Boolean(closedState.pendingCycleCapitalInput);
+      previousCashBalance = closedState.pendingCycleCapitalInput?.previousCashBalance;
       nextState = closedState;
     }
   }
@@ -327,7 +333,9 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
       ? `${suggestion?.reason ?? "No T event suggestion."} Skipped ${skippedForInsufficientQuantity} sell execution(s) because Goldbit state quantity was insufficient.`
       : suggestion?.reason,
     cycleClosed,
-    archivedCycleId
+    archivedCycleId,
+    requiresNextCycleCapital,
+    previousCashBalance
   };
 
   await writeLog("INFO", "Goldbit filled order sync completed", { ...result });

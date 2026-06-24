@@ -1,7 +1,7 @@
 import type { OrderCandidate } from "@prisma/client";
 import { config } from "../config.js";
-import type { TradeSyncResult } from "../goldbit/trade-sync.js";
 import type { DailyPlan } from "../goldbit/mechanism-types.js";
+import type { TradeSyncResult } from "../goldbit/trade-sync.js";
 import { writeLog } from "../storage/logs.js";
 
 interface TelegramApiResponse<T> {
@@ -10,10 +10,7 @@ interface TelegramApiResponse<T> {
   description?: string;
 }
 
-export const callTelegramApi = async <T>(
-  method: string,
-  payload: Record<string, unknown>
-): Promise<T> => {
+export const callTelegramApi = async <T>(method: string, payload: Record<string, unknown>): Promise<T> => {
   if (!config.telegram.botToken) {
     throw new Error("TELEGRAM_BOT_TOKEN is not configured.");
   }
@@ -95,8 +92,8 @@ export const renderActionPlanMessage = (plan: DailyPlan, candidates: OrderCandid
     `평균단가: ${formatMoney(plan.averagePrice)}`,
     `현금: ${formatMoney(plan.cashBalance)}`,
     "",
-    `별지점: ${formatMoney(plan.starPrice)}`,
-    `매수점: ${formatMoney(plan.buyPrice)}`,
+    `별가격: ${formatMoney(plan.starPrice)}`,
+    `매수가: ${formatMoney(plan.buyPrice)}`,
     `지정가 매도: ${formatMoney(plan.limitSellPrice)}`,
     "",
     "매수 후보:",
@@ -107,7 +104,7 @@ export const renderActionPlanMessage = (plan: DailyPlan, candidates: OrderCandid
     ...(plan.warnings.length > 0 ? ["", "주의:", ...plan.warnings.map((warning) => `- ${warning}`)] : []),
     "",
     `승인 가능 시간: ${config.approvalExpireMinutes}분`,
-    "승인하면 위 후보 전체를 순서대로 주문합니다."
+    "승인하면 후보 전체를 순서대로 주문합니다."
   ].join("\n");
 };
 
@@ -145,19 +142,27 @@ export const sendActionPlanMessage = async (
 };
 
 const formatSyncTradeLine = (trade: TradeSyncResult["trades"][number], index: number): string => {
-  return `${index + 1}. ${trade.side} ${trade.orderType} ${trade.quantity}주 @ ${formatMoney(trade.price)} 약 ${formatMoney(trade.amount)} / 수수료 ${formatMoney(trade.fee)}`;
+  return `${index + 1}. ${trade.side} ${trade.orderType} ${trade.quantity}주 @ ${formatMoney(trade.price)} / 약 ${formatMoney(trade.amount)} / 수수료 ${formatMoney(trade.fee)}`;
 };
 
 export const renderTradeSyncMessage = (result: TradeSyncResult): string => {
-  const tradeLines = result.trades.length > 0
-    ? result.trades.map(formatSyncTradeLine)
-    : ["- 신규 반영 거래 없음"];
+  const tradeLines =
+    result.trades.length > 0 ? result.trades.map(formatSyncTradeLine) : ["- 신규 반영 거래 없음"];
   const tLine =
     result.tBefore !== undefined && result.tAfter !== undefined
       ? `${result.tBefore.toFixed(4)} -> ${result.tAfter.toFixed(4)}${result.tEventType ? ` (${result.tEventType})` : ""}`
       : result.tEventApplied
         ? "적용됨"
-        : "변화 없음";
+        : "변경 없음";
+  const cycleCloseLines = result.requiresNextCycleCapital
+    ? [
+        "",
+        "새 사이클 총자산 입력이 필요합니다.",
+        `이전 종료 현금: ${formatMoney(result.previousCashBalance)}`,
+        "20분할은 고정으로 유지됩니다.",
+        "예시: /capital 20000"
+      ]
+    : [];
 
   return [
     "[Goldbit 05:30 체결 동기화]",
@@ -172,7 +177,8 @@ export const renderTradeSyncMessage = (result: TradeSyncResult): string => {
     "",
     `T값 변화: ${tLine}`,
     `Cycle 종료: ${result.cycleClosed ? `예 (${result.archivedCycleId ?? "archived"})` : "아니오"}`,
-    ...(result.tEventReason ? ["", `판단 근거: ${result.tEventReason}`] : [])
+    ...(result.tEventReason ? ["", `판단 근거: ${result.tEventReason}`] : []),
+    ...cycleCloseLines
   ].join("\n");
 };
 

@@ -156,6 +156,14 @@ export interface CycleArchive {
   archivedAt: string;
 }
 
+export interface PendingCycleCapitalInput {
+  requestedAt: string;
+  reason: "CYCLE_CLOSED";
+  archivedCycleId?: string;
+  previousCashBalance: number;
+  division: Division;
+}
+
 export interface GoldbitLocalState {
   strategy: StrategyConfig;
   trades: Trade[];
@@ -166,5 +174,6 @@ export interface GoldbitLocalState {
   previousClose: number;
   feeRatePercent: number;
   pendingTrades?: unknown[];
+  pendingCycleCapitalInput?: PendingCycleCapitalInput;
   cycleArchives: CycleArchive[];
 }
