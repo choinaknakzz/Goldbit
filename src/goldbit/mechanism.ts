@@ -383,6 +383,28 @@ export const suggestDailyTEvent = (
   );
 
   if (!planSnapshot) {
+    const firstBuyTrades = dayTrades.filter(
+      (trade) =>
+        trade.type === "BUY" &&
+        trade.quantityBefore === 0 &&
+        trade.tBefore === 0 &&
+        !dayTrades.some((dayTrade) => dayTrade.type === "SELL")
+    );
+
+    if (firstBuyTrades.length > 0) {
+      return {
+        input: {
+          date,
+          mode: "NORMAL",
+          normalTEvent: "FULL_BUY",
+          memo: "Suggested from Toss filled first-buy order without a saved action plan snapshot."
+        },
+        confidence: 0.8,
+        reason: "No saved action plan snapshot, but a first-buy fill was detected.",
+        detectedSummary
+      };
+    }
+
     return { input: null, confidence: 0, reason: "No saved action plan snapshot for this date.", detectedSummary };
   }
 
