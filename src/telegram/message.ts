@@ -1,5 +1,6 @@
 import type { OrderCandidate } from "@prisma/client";
 import { config } from "../config.js";
+import type { TradeSyncResult } from "../goldbit/trade-sync.js";
 import type { DailyPlan } from "../goldbit/mechanism-types.js";
 import { writeLog } from "../storage/logs.js";
 
@@ -141,4 +142,39 @@ export const sendActionPlanMessage = async (
         }
       : {})
   });
+};
+
+const formatSyncTradeLine = (trade: TradeSyncResult["trades"][number], index: number): string => {
+  return `${index + 1}. ${trade.side} ${trade.orderType} ${trade.quantity}주 @ ${formatMoney(trade.price)} 약 ${formatMoney(trade.amount)}`;
+};
+
+export const renderTradeSyncMessage = (result: TradeSyncResult): string => {
+  const tradeLines = result.trades.length > 0
+    ? result.trades.map(formatSyncTradeLine)
+    : ["- 신규 반영 거래 없음"];
+  const tLine =
+    result.tBefore !== undefined && result.tAfter !== undefined
+      ? `${result.tBefore.toFixed(4)} -> ${result.tAfter.toFixed(4)}${result.tEventType ? ` (${result.tEventType})` : ""}`
+      : result.tEventApplied
+        ? "적용됨"
+        : "변화 없음";
+
+  return [
+    "[Goldbit 05:30 체결 동기화]",
+    "",
+    `거래일: ${result.tradingDate ?? "N/A"}`,
+    `조회 체결: ${result.fetchedExecutions}건`,
+    `신규 반영: ${result.createdTrades}건`,
+    `스킵/기반영: ${result.skippedExecutions}건`,
+    "",
+    "거래 요약:",
+    ...tradeLines,
+    "",
+    `T값 변화: ${tLine}`,
+    ...(result.tEventReason ? ["", `판단 근거: ${result.tEventReason}`] : [])
+  ].join("\n");
+};
+
+export const sendTradeSyncMessage = async (result: TradeSyncResult): Promise<void> => {
+  await sendTextMessage(renderTradeSyncMessage(result));
 };

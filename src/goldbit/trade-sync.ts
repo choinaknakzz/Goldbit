@@ -26,7 +26,17 @@ export interface TradeSyncResult {
   fetchedExecutions: number;
   createdTrades: number;
   skippedExecutions: number;
+  trades: Array<{
+    side: string;
+    orderType: string;
+    quantity: number;
+    price: number;
+    amount: number;
+  }>;
   tEventApplied: boolean;
+  tEventType?: string;
+  tBefore?: number;
+  tAfter?: number;
   tEventReason?: string;
 }
 
@@ -223,11 +233,14 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
   const suggestion = tradingDate
     ? suggestDailyTEvent(nextState.strategy, planSnapshot, nextState.trades, tradingDate)
     : undefined;
-  const hasExistingTEvent = Boolean(tradingDate && nextState.tEvents.some((event) => event.date === tradingDate));
+  const existingTEvent = tradingDate ? nextState.tEvents.find((event) => event.date === tradingDate) : undefined;
+  const hasExistingTEvent = Boolean(existingTEvent);
   let tEventApplied = false;
+  let appliedTEvent: DailyTEvent | undefined;
 
   if (suggestion?.input && !hasExistingTEvent) {
     nextState = applyDailyTEventInputToState(nextState, suggestion.input);
+    appliedTEvent = tradingDate ? nextState.tEvents.find((event) => event.date === tradingDate) : undefined;
     tEventApplied = true;
   }
 
@@ -241,7 +254,17 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
     fetchedExecutions: executions.length,
     createdTrades: tradeInputs.length,
     skippedExecutions,
+    trades: nextState.trades.filter((trade) => trade.tradedAt === tradingDate).map((trade) => ({
+      side: trade.type ?? "N/A",
+      orderType: trade.orderType ?? "N/A",
+      quantity: trade.quantity ?? 0,
+      price: trade.price ?? 0,
+      amount: trade.amount ?? round((trade.price ?? 0) * (trade.quantity ?? 0))
+    })),
     tEventApplied,
+    tEventType: (appliedTEvent ?? existingTEvent)?.normalTEvent ?? (appliedTEvent ?? existingTEvent)?.reverseTEvent,
+    tBefore: (appliedTEvent ?? existingTEvent)?.tBefore,
+    tAfter: (appliedTEvent ?? existingTEvent)?.tAfter,
     tEventReason: skippedForInsufficientQuantity > 0
       ? `${suggestion?.reason ?? "No T event suggestion."} Skipped ${skippedForInsufficientQuantity} sell execution(s) because Goldbit state quantity was insufficient.`
       : suggestion?.reason

@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { createAndSendGoldbitActionPlan } from "./goldbit/action-plan.js";
 import { syncFilledOrdersToGoldbitState } from "./goldbit/trade-sync.js";
 import { writeLog } from "./storage/logs.js";
+import { sendTextMessage, sendTradeSyncMessage } from "./telegram/message.js";
 
 export const runScheduledCandidate = async (): Promise<void> => {
   try {
@@ -16,8 +17,16 @@ export const runScheduledCandidate = async (): Promise<void> => {
 
 export const runScheduledTradeSync = async (): Promise<void> => {
   try {
-    await syncFilledOrdersToGoldbitState();
+    const result = await syncFilledOrdersToGoldbitState();
+    await sendTradeSyncMessage(result);
   } catch (error) {
+    await sendTextMessage(
+      [
+        "[Goldbit 05:30 체결 동기화 실패]",
+        "",
+        error instanceof Error ? error.message : String(error)
+      ].join("\n")
+    );
     await writeLog("ERROR", "Goldbit filled order sync failed", {
       error: error instanceof Error ? error.message : String(error)
     });
