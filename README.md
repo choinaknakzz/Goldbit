@@ -92,9 +92,9 @@ npm run soxl
 npm run sync:trades
 ```
 
-`npm run sync:trades`는 Toss 최근 체결 중 가장 최근 미국 거래일 묶음을 읽고, Goldbit state의 `trades`와 `tEvents`를 중복 없이 갱신합니다. 수수료는 Toss `/api/v1/commissions`의 US 수수료율을 우선 사용하고, 조회 실패 시 Goldbit state의 `feeRatePercent`를 사용합니다. 매도 체결 수량이 Goldbit state의 현재 보유수량보다 크면 음수 보유가 생기지 않도록 해당 체결은 스킵하고 로그에 남깁니다.
+`npm run sync:trades`는 Toss 최근 체결 중 가장 최근 미국 거래일 묶음을 읽고, Goldbit state의 `trades`와 `tEvents`를 중복 없이 갱신합니다. 수수료는 주문/체결 조회의 실제 체결 수수료(`execution.commission`)를 우선 사용합니다. 값이 없으면 Toss `/api/v1/commissions`의 US 수수료율로 계산하고, 수수료율 조회 실패 시 Goldbit state의 `feeRatePercent`를 사용합니다. 매도 체결 수량이 Goldbit state의 현재 보유수량보다 크면 음수 보유가 생기지 않도록 해당 체결은 스킵하고 로그에 남깁니다.
 
-전량 매도 체결로 보유수량이 0이 되면 `FULL_SELL_CYCLE_CLOSE` T 이벤트를 적용합니다. 이 이벤트는 T값을 0으로 만들고, 현재 cycle을 `cycleArchives`에 저장한 뒤 새 cycle 상태로 초기화합니다.
+전량 매도 체결로 보유수량이 0이 되면 `FULL_SELL_CYCLE_CLOSE` T 이벤트를 적용합니다. 이 이벤트는 T값을 0으로 만들고, 현재 cycle을 `cycleArchives`에 저장한 뒤 새 cycle 상태로 초기화합니다. 새 cycle의 `initialCapital`과 `cashBalance`는 전량 매도 후 남은 현금으로 시작하며, 최신 수수료율 설정은 유지됩니다.
 
 Bot만 실행:
 

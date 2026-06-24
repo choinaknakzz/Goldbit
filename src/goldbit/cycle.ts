@@ -131,6 +131,7 @@ export const closeCycleAndResetState = (state: GoldbitLocalState): GoldbitLocalS
     ...state,
     strategy: {
       ...state.strategy,
+      initialCapital: state.strategy.cashBalance,
       cashBalance: state.strategy.cashBalance,
       averagePrice: 0,
       quantity: 0,

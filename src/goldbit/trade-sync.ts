@@ -33,6 +33,7 @@ export interface TradeSyncResult {
     quantity: number;
     price: number;
     amount: number;
+    fee: number;
   }>;
   tEventApplied: boolean;
   tEventType?: string;
@@ -47,6 +48,25 @@ const brokerMemo = (orderId: string): string => `Toss orderId: ${orderId}`;
 
 const hasSyncedExecution = (state: GoldbitLocalState, execution: Execution): boolean => {
   return state.trades.some((trade) => trade.memo?.includes(brokerMemo(execution.id)));
+};
+
+const updateExistingTradeFees = (state: GoldbitLocalState, executions: Execution[]): GoldbitLocalState => {
+  let changed = false;
+  const trades = state.trades.map((trade) => {
+    const execution = executions.find((item) => trade.memo?.includes(brokerMemo(item.id)));
+    if (execution?.fee === undefined || trade.fee === execution.fee) {
+      return trade;
+    }
+
+    changed = true;
+    return {
+      ...trade,
+      fee: execution.fee,
+      memo: `${trade.memo ?? ""}; fee synced from Toss commission`.trim()
+    };
+  });
+
+  return changed ? { ...state, trades } : state;
 };
 
 const parseOrderRequest = (payload?: string | null): OrderRequest | null => {
@@ -97,7 +117,7 @@ const createTradeInput = (
   }
 
   const amount = price * quantity;
-  const fee = round(amount * (commissionRatePercent / 100));
+  const fee = execution.fee ?? round(amount * (commissionRatePercent / 100));
 
   return {
     type: execution.side,
@@ -206,7 +226,14 @@ const applyDailyTEventInputToState = (state: GoldbitLocalState, input: DailyTEve
 export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult> => {
   const state = readGoldbitState();
   const executions = await getRecentExecutions(config.targetSymbol);
-  const commissionRatePercent = (await getUsCommissionRatePercent()) ?? state.feeRatePercent ?? 0;
+  const commissionRatePercent = await getUsCommissionRatePercent().catch(async (error) => {
+    await writeLog("WARN", "Toss commission rate lookup failed; using saved Goldbit fee rate", {
+      error: error instanceof Error ? error.message : String(error),
+      fallbackFeeRatePercent: state.feeRatePercent
+    });
+    return null;
+  });
+  const feeRatePercent = commissionRatePercent ?? state.feeRatePercent ?? 0;
   const tradingDate = executions[0]?.tradingDate;
   const requestMap = await getLocalOrderRequestMap(executions);
   let skippedForInsufficientQuantity = 0;
@@ -215,7 +242,7 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
     .sort((left, right) => left.executedAt.localeCompare(right.executedAt))
     .map((execution) => ({
       execution,
-      input: createTradeInput(execution, state, requestMap.get(execution.id), commissionRatePercent)
+      input: createTradeInput(execution, state, requestMap.get(execution.id), feeRatePercent)
     }))
     .filter((item): item is { execution: Execution; input: TradeInput } => Boolean(item.input));
   const tradeInputs: Array<{ execution: Execution; input: TradeInput }> = [];
@@ -231,7 +258,18 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
     tradeInputs.push(item);
   }
 
-  let nextState = applyTradeInputs(state, tradeInputs);
+  let nextState = updateExistingTradeFees(
+    applyTradeInputs(
+      commissionRatePercent === null
+        ? state
+        : {
+            ...state,
+            feeRatePercent
+          },
+      tradeInputs
+    ),
+    executions
+  );
   const planSnapshot = tradingDate
     ? nextState.dailyPlanSnapshots.find((snapshot) => snapshot.date === tradingDate)
     : undefined;
@@ -258,7 +296,12 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
     }
   }
 
-  if (tradeInputs.length > 0 || tEventApplied) {
+  if (
+    tradeInputs.length > 0 ||
+    tEventApplied ||
+    (commissionRatePercent !== null && state.feeRatePercent !== feeRatePercent) ||
+    nextState.trades.some((trade, index) => trade.fee !== state.trades[index]?.fee)
+  ) {
     writeGoldbitState(nextState);
   }
 
@@ -273,7 +316,8 @@ export const syncFilledOrdersToGoldbitState = async (): Promise<TradeSyncResult>
       orderType: trade.orderType ?? "N/A",
       quantity: trade.quantity ?? 0,
       price: trade.price ?? 0,
-      amount: trade.amount ?? round((trade.price ?? 0) * (trade.quantity ?? 0))
+      amount: trade.amount ?? round((trade.price ?? 0) * (trade.quantity ?? 0)),
+      fee: trade.fee ?? 0
     })),
     tEventApplied,
     tEventType: (appliedTEvent ?? existingTEvent)?.normalTEvent ?? (appliedTEvent ?? existingTEvent)?.reverseTEvent,

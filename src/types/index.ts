@@ -28,6 +28,7 @@ export interface Execution {
   orderType?: OrderType;
   quantity: number;
   price?: number;
+  fee?: number;
   executedAt: string;
   orderedAt?: string;
   tradingDate?: string;

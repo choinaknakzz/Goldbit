@@ -145,7 +145,7 @@ export const sendActionPlanMessage = async (
 };
 
 const formatSyncTradeLine = (trade: TradeSyncResult["trades"][number], index: number): string => {
-  return `${index + 1}. ${trade.side} ${trade.orderType} ${trade.quantity}주 @ ${formatMoney(trade.price)} 약 ${formatMoney(trade.amount)}`;
+  return `${index + 1}. ${trade.side} ${trade.orderType} ${trade.quantity}주 @ ${formatMoney(trade.price)} 약 ${formatMoney(trade.amount)} / 수수료 ${formatMoney(trade.fee)}`;
 };
 
 export const renderTradeSyncMessage = (result: TradeSyncResult): string => {

@@ -37,6 +37,8 @@ interface OrdersResponse {
     execution?: {
       filledQuantity?: string | null;
       averageFilledPrice?: string | null;
+      commission?: string | null;
+      tax?: string | null;
       filledAt?: string | null;
     };
   }>;
@@ -44,6 +46,11 @@ interface OrdersResponse {
 
 const toNumber = (value: string | number | null | undefined): number => {
   if (value === null || value === undefined || value === "") return 0;
+  return Number(value);
+};
+
+const toOptionalNumber = (value: string | number | null | undefined): number | undefined => {
+  if (value === null || value === undefined || value === "") return undefined;
   return Number(value);
 };
 
@@ -165,6 +172,7 @@ export const getRecentExecutions = async (symbol: string): Promise<Execution[]> 
         orderType: getExecutionOrderType(order),
         quantity: toNumber(order.execution?.filledQuantity ?? order.quantity),
         price: toNumber(order.execution?.averageFilledPrice),
+        fee: toOptionalNumber(order.execution?.commission),
         executedAt,
         orderedAt: order.orderedAt,
         tradingDate: getNewYorkDate(executedAt)
