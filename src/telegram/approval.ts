@@ -37,6 +37,12 @@ const getCandidateSequence = (candidate: OrderCandidate): number => {
   return rawData.sequence ?? 999;
 };
 
+const getCandidatePlanGroupId = (candidate: OrderCandidate): string | undefined => {
+  if (!candidate.rawData) return undefined;
+  const rawData = JSON.parse(candidate.rawData) as { planGroupId?: string };
+  return rawData.planGroupId;
+};
+
 const sortCandidatesByPlanOrder = (candidates: OrderCandidate[]): OrderCandidate[] => {
   return [...candidates].sort((left, right) => getCandidateSequence(left) - getCandidateSequence(right));
 };
@@ -239,7 +245,7 @@ export const approveCandidate = async (candidateId: string): Promise<void> => {
 export const approvePlan = async (planGroupId: string): Promise<void> => {
   await writeLog("INFO", "plan approval received", { planGroupId });
   const candidates = sortCandidatesByPlanOrder(await findCandidatesByIdPrefix(`${planGroupId}-`)).filter(
-    (candidate) => candidate.status === "PENDING"
+    (candidate) => candidate.status === "PENDING" && getCandidatePlanGroupId(candidate) === planGroupId
   );
 
   if (candidates.length === 0) {
@@ -272,7 +278,7 @@ export const cancelCandidate = async (candidateId: string): Promise<void> => {
 export const cancelPlan = async (planGroupId: string): Promise<void> => {
   await writeLog("INFO", "plan cancel received", { planGroupId });
   const candidates = sortCandidatesByPlanOrder(await findCandidatesByIdPrefix(`${planGroupId}-`)).filter(
-    (candidate) => candidate.status === "PENDING"
+    (candidate) => candidate.status === "PENDING" && getCandidatePlanGroupId(candidate) === planGroupId
   );
 
   if (candidates.length === 0) {

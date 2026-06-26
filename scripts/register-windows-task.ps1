@@ -26,7 +26,12 @@ $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
   -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runnerPath`"" `
   -WorkingDirectory $projectRoot
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$watchdogTrigger = New-ScheduledTaskTrigger `
+  -Once `
+  -At (Get-Date).Date `
+  -RepetitionInterval (New-TimeSpan -Minutes 5) `
+  -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
   -DontStopIfGoingOnBatteries `
@@ -40,7 +45,7 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 Register-ScheduledTask `
   -TaskName $taskName `
   -Action $action `
-  -Trigger $trigger `
+  -Trigger @($logonTrigger, $watchdogTrigger) `
   -Settings $settings `
   -Principal $principal `
   -Force | Out-Null
@@ -48,3 +53,4 @@ Register-ScheduledTask `
 Start-ScheduledTask -TaskName $taskName
 
 Write-Host "Registered and started scheduled task: $taskName"
+Write-Host "Watchdog trigger: every 5 minutes; running instances are ignored."

@@ -129,7 +129,7 @@ npm run build
 npm run service:install
 ```
 
-등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 숨김 PowerShell 프로세스에서 Node를 직접 실행해 CMD 창을 띄우지 않습니다. 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 로그는 `automation-service.log`에 저장됩니다.
+등록된 작업 이름은 `GoldbitAutomationLab`입니다. Windows 로그인 시 자동 시작되고, 숨김 PowerShell 프로세스에서 Node를 직접 실행해 CMD 창을 띄우지 않습니다. 프로세스가 종료되면 1분 간격으로 재시작을 시도합니다. 추가로 5분마다 watchdog 트리거가 같은 작업을 다시 시작하려고 시도합니다. 이미 실행 중이면 새 인스턴스는 무시되고, 서비스가 죽어 `Ready` 상태로 남아 있으면 최대 5분 안에 다시 올라옵니다. 로그는 `automation-service.log`에 저장됩니다.
 
 작업 스케줄러 등록을 해제하려면 아래 명령을 실행합니다.
 

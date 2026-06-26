@@ -1,6 +1,6 @@
 import type { OrderCandidate } from "@prisma/client";
 import { config } from "../config.js";
-import { saveCandidate } from "../storage/candidates.js";
+import { expirePendingCandidatesByIdPrefix, saveCandidate } from "../storage/candidates.js";
 import { writeLog } from "../storage/logs.js";
 import { getCurrentPrice } from "../toss/price.js";
 import type { CandidateDraft, OrderSide, OrderType } from "../types/index.js";
@@ -23,9 +23,17 @@ const orderAmount = (order: PlannedOrder): number | undefined => {
 
 const planDateCompact = (plan: DailyPlan): string => plan.date.replace(/-/g, "");
 
-const planGroupId = (plan: DailyPlan): string => `${planDateCompact(plan)}-${plan.symbol}-PLAN`;
+const planBaseId = (plan: DailyPlan): string => `${planDateCompact(plan)}-${plan.symbol}-PLAN`;
 
-const toCandidate = (plan: DailyPlan, order: PlannedOrder, sequence: number): CandidateDraft | null => {
+const createPlanSessionId = (): string => Date.now().toString(36);
+
+const toCandidate = (
+  plan: DailyPlan,
+  order: PlannedOrder,
+  sequence: number,
+  groupId: string,
+  baseId: string
+): CandidateDraft | null => {
   if (!isSupportedOrderType(order.orderType) || !order.quantity || order.quantity < 1) {
     return null;
   }
@@ -36,7 +44,7 @@ const toCandidate = (plan: DailyPlan, order: PlannedOrder, sequence: number): Ca
   const orderType = order.orderType as OrderType;
 
   return {
-    id: `${planGroupId(plan)}-${String(sequence).padStart(2, "0")}-${side}-${orderType}-${order.priority}`,
+    id: `${groupId}-${String(sequence).padStart(2, "0")}-${side}-${orderType}-${order.priority}`,
     symbol: plan.symbol,
     side,
     orderType,
@@ -48,7 +56,9 @@ const toCandidate = (plan: DailyPlan, order: PlannedOrder, sequence: number): Ca
     expiresAt,
     rawData: {
       source: "Goldbit Today Action Plan",
-      planGroupId: planGroupId(plan),
+      planBaseId: baseId,
+      planGroupId: groupId,
+      planSessionId: groupId.slice(baseId.length + 1),
       sequence,
       plan,
       order
@@ -109,8 +119,11 @@ export const createAndSendGoldbitActionPlan = async (chatId?: string): Promise<{
   }
 
   const snapshotSaved = saveGoldbitPlanSnapshot(plan);
+  const baseId = planBaseId(plan);
+  const groupId = `${baseId}-${createPlanSessionId()}`;
+  const expiredCandidates = await expirePendingCandidatesByIdPrefix(`${baseId}-`);
   const drafts = [...plan.buyOrders, ...plan.sellOrders]
-    .map((order, index) => toCandidate(plan, order, index + 1))
+    .map((order, index) => toCandidate(plan, order, index + 1, groupId, baseId))
     .filter((candidate): candidate is CandidateDraft => Boolean(candidate));
   const candidates: OrderCandidate[] = [];
 
@@ -124,6 +137,8 @@ export const createAndSendGoldbitActionPlan = async (chatId?: string): Promise<{
     mode: plan.mode,
     phase: plan.phase,
     candidateCount: candidates.length,
+    planGroupId: groupId,
+    expiredCandidates,
     snapshotSaved
   });
 

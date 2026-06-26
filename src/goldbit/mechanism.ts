@@ -139,10 +139,11 @@ export const generateNormalDailyPlan = (strategyConfig: StrategyConfig, previous
     });
   } else if (phase === "FIRST_HALF" && starPrice) {
     const starBuyPrice = getBuyPrice(starPrice);
+    const averageBuyPrice = round(strategyConfig.averagePrice);
     const { starQuantity, averageQuantity } = getFirstHalfBuyQuantities(
       dailyBuyAmount,
       starBuyPrice,
-      strategyConfig.averagePrice
+      averageBuyPrice
     );
     buyOrders.push(
       {
@@ -157,9 +158,9 @@ export const generateNormalDailyPlan = (strategyConfig: StrategyConfig, previous
       {
         side: "BUY",
         orderType: "LOC",
-        price: strategyConfig.averagePrice,
+        price: averageBuyPrice,
         quantity: averageQuantity,
-        amount: getPlannedAmount(strategyConfig.averagePrice, averageQuantity),
+        amount: getPlannedAmount(averageBuyPrice, averageQuantity),
         reason: "Half of one-turn budget at average price.",
         priority: 2
       }
@@ -326,7 +327,7 @@ export const applyTradeToStrategy = (strategyConfig: StrategyConfig, trade: Trad
   const quantityAfter = isBuy ? strategyConfig.quantity + trade.quantity : strategyConfig.quantity - trade.quantity;
   const costBefore = strategyConfig.averagePrice * strategyConfig.quantity;
   const averagePriceAfter = isBuy
-    ? round((costBefore + amount + trade.fee) / quantityAfter)
+    ? round((costBefore + amount) / quantityAfter)
     : quantityAfter > 0
       ? strategyConfig.averagePrice
       : 0;

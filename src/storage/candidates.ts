@@ -48,6 +48,23 @@ export const findCandidatesByIdPrefix = async (idPrefix: string): Promise<OrderC
   });
 };
 
+export const expirePendingCandidatesByIdPrefix = async (idPrefix: string): Promise<number> => {
+  const result = await prisma.orderCandidate.updateMany({
+    where: {
+      id: {
+        startsWith: idPrefix
+      },
+      status: "PENDING"
+    },
+    data: {
+      status: "EXPIRED",
+      expiresAt: new Date()
+    }
+  });
+
+  return result.count;
+};
+
 export const markCandidateStatus = async (
   id: string,
   status: CandidateStatus,
