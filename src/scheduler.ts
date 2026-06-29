@@ -2,10 +2,21 @@ import cron from "node-cron";
 import { config } from "./config.js";
 import { createAndSendGoldbitActionPlan } from "./goldbit/action-plan.js";
 import { syncFilledOrdersToGoldbitState } from "./goldbit/trade-sync.js";
+import { getNewYorkDateKey, isNyseTradingDate } from "./market/us-market-calendar.js";
 import { writeLog } from "./storage/logs.js";
 import { sendTextMessage, sendTradeSyncMessage } from "./telegram/message.js";
 
-export const runScheduledCandidate = async (): Promise<void> => {
+const shouldRunForNyseTradingDate = async (job: string, instant = new Date()): Promise<boolean> => {
+  const newYorkDate = getNewYorkDateKey(instant);
+  if (isNyseTradingDate(newYorkDate)) return true;
+
+  await writeLog("INFO", "scheduled job skipped because NYSE is closed", { job, newYorkDate });
+  return false;
+};
+
+export const runScheduledCandidate = async (instant = new Date()): Promise<void> => {
+  if (!(await shouldRunForNyseTradingDate("actionPlan", instant))) return;
+
   try {
     await createAndSendGoldbitActionPlan();
   } catch (error) {
@@ -15,7 +26,9 @@ export const runScheduledCandidate = async (): Promise<void> => {
   }
 };
 
-export const runScheduledTradeSync = async (): Promise<void> => {
+export const runScheduledTradeSync = async (instant = new Date()): Promise<void> => {
+  if (!(await shouldRunForNyseTradingDate("tradeSync", instant))) return;
+
   try {
     const result = await syncFilledOrdersToGoldbitState();
     await sendTradeSyncMessage(result);

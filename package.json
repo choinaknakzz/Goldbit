@@ -8,6 +8,7 @@
     "dev": "tsx src/index.ts dev",
     "start": "node dist/index.js dev",
     "build": "tsc",
+    "test": "node --import tsx --test test/**/*.test.ts",
     "bot": "tsx src/index.ts bot",
     "candidate": "tsx src/index.ts candidate",
     "plan": "tsx src/index.ts candidate",
