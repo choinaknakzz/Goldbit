@@ -35,7 +35,9 @@ export const config = {
     appSecret: process.env.TOSS_APP_SECRET ?? "",
     accessToken: process.env.TOSS_ACCESS_TOKEN ?? "",
     refreshToken: process.env.TOSS_REFRESH_TOKEN ?? "",
-    accountId: process.env.TOSS_ACCOUNT_ID ?? ""
+    accountId: process.env.TOSS_ACCOUNT_ID ?? "",
+    tokenCachePath:
+      process.env.TOSS_TOKEN_CACHE_PATH ?? "D:\\Goldbit Automation Lab\\.cache\\toss-token.json"
   },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN ?? "",

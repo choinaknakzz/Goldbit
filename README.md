@@ -184,3 +184,11 @@ npm run prisma:studio
 ## 주의사항
 
 승인 전에는 주문을 실행하지 않습니다. 이미 실행, 만료, 취소된 후보는 다시 실행하지 않습니다. v1은 SOXL만 허용합니다. Toss API endpoint는 공식 OpenAPI JSON 기준으로 연결했습니다. LOC는 공식 예시의 `LIMIT + CLS` 조합으로 요청합니다.
+## Toss API Token Sharing
+
+Goldbit shares its Toss API token cache with the market analysis workspace.
+
+- Shared token cache path: `D:\Goldbit Automation Lab\.cache\toss-token.json`
+- The cache path is configured with `TOSS_TOKEN_CACHE_PATH`.
+- Token refresh uses a lock directory next to the cache file to avoid concurrent token issuance.
+- Goldbit keeps SOXL automation responsibilities; the market analysis workspace can use the shared token for broader portfolio reads.
