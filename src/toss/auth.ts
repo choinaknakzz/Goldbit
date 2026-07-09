@@ -43,12 +43,16 @@ export const refreshAccessToken = async (): Promise<TossTokenResult> => {
   return cachedToken;
 };
 
-export const getAccessToken = async (): Promise<string> => {
-  if (config.toss.accessToken) {
+export const clearCachedAccessToken = (): void => {
+  cachedToken = undefined;
+};
+
+export const getAccessToken = async (options?: { forceRefresh?: boolean }): Promise<string> => {
+  if (config.toss.accessToken && !options?.forceRefresh) {
     return config.toss.accessToken;
   }
 
-  if (cachedToken && cachedToken.expiresAt - Date.now() > 60_000) {
+  if (!options?.forceRefresh && cachedToken && cachedToken.expiresAt - Date.now() > 60_000) {
     return cachedToken.accessToken;
   }
 

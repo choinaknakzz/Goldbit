@@ -1,6 +1,6 @@
-import axios, { AxiosError, type AxiosInstance } from "axios";
+import axios, { AxiosError, AxiosHeaders, type AxiosInstance } from "axios";
 import { config } from "../config.js";
-import { getAccessToken } from "./auth.js";
+import { clearCachedAccessToken, getAccessToken } from "./auth.js";
 
 export class TossEndpointNotConfiguredError extends Error {
   constructor(operation: string) {
@@ -10,6 +10,30 @@ export class TossEndpointNotConfiguredError extends Error {
     this.name = "TossEndpointNotConfiguredError";
   }
 }
+
+type RetryableAxiosConfig = NonNullable<AxiosError["config"]> & {
+  retryCount?: number;
+  tokenRefreshRetry?: boolean;
+};
+
+const getTossErrorCode = (error: AxiosError): string | undefined => {
+  const data = error.response?.data;
+  if (!data || typeof data !== "object" || !("error" in data)) {
+    return undefined;
+  }
+
+  const tossError = (data as { error?: unknown }).error;
+  if (!tossError || typeof tossError !== "object" || !("code" in tossError)) {
+    return undefined;
+  }
+
+  const code = (tossError as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+};
+
+export const isInvalidTossTokenError = (error: AxiosError): boolean => {
+  return error.response?.status === 401 && getTossErrorCode(error) === "invalid-token";
+};
 
 export const createTossClient = async (accountId?: string): Promise<AxiosInstance> => {
   const accessToken = await getAccessToken();
@@ -26,11 +50,26 @@ export const createTossClient = async (accountId?: string): Promise<AxiosInstanc
 
   client.interceptors.response.use(undefined, async (error: AxiosError) => {
     const requestConfig = error.config;
-    if (!requestConfig || error.response?.status !== 429) {
+    if (!requestConfig) {
       throw error;
     }
 
-    const retryCount = Number((requestConfig as { retryCount?: number }).retryCount ?? 0);
+    const retryableConfig = requestConfig as RetryableAxiosConfig;
+
+    if (isInvalidTossTokenError(error) && !retryableConfig.tokenRefreshRetry) {
+      clearCachedAccessToken();
+      const refreshedAccessToken = await getAccessToken({ forceRefresh: true });
+      retryableConfig.tokenRefreshRetry = true;
+      retryableConfig.headers = AxiosHeaders.from(retryableConfig.headers);
+      retryableConfig.headers.set("Authorization", `Bearer ${refreshedAccessToken}`);
+      return client.request(retryableConfig);
+    }
+
+    if (error.response?.status !== 429) {
+      throw error;
+    }
+
+    const retryCount = Number(retryableConfig.retryCount ?? 0);
     if (retryCount >= 3) {
       throw error;
     }
@@ -38,9 +77,9 @@ export const createTossClient = async (accountId?: string): Promise<AxiosInstanc
     const retryAfterHeader = error.response.headers["retry-after"];
     const retryAfter = Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader;
     const waitMs = retryAfter ? Number(retryAfter) * 1000 : 1000 * (retryCount + 1);
-    (requestConfig as { retryCount?: number }).retryCount = retryCount + 1;
+    retryableConfig.retryCount = retryCount + 1;
     await new Promise((resolve) => setTimeout(resolve, Number.isFinite(waitMs) ? waitMs : 1000));
-    return client.request(requestConfig);
+    return client.request(retryableConfig);
   });
 
   return client;
