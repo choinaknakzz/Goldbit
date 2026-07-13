@@ -9,13 +9,13 @@ if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
 }
 
 $orphanProcesses = Get-CimInstance Win32_Process | Where-Object {
+  $_.CommandLine -like "*$projectRoot*" -and
   (
-    ($_.CommandLine -like "*$projectRoot*" -and (
-      $_.CommandLine -like "*npm.cmd run start*" -or
-      $_.CommandLine -like "*run-service-hidden.vbs*"
-    )) -or
-    $_.CommandLine -like "*dist/index.js dev*"
-  ) -and $_.ProcessId -ne $PID
+    $_.CommandLine -like "*npm.cmd run start*" -or
+    $_.CommandLine -like "*run-service-hidden.vbs*" -or
+    $_.CommandLine -like "*dist\index.js*"
+  ) -and
+  $_.ProcessId -ne $PID
 }
 
 foreach ($process in $orphanProcesses) {

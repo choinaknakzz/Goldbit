@@ -1,8 +1,10 @@
 import type { OrderCandidate } from "@prisma/client";
 import { assertTargetSymbol, config } from "../config.js";
+import { evaluateBuyingPower } from "../goldbit/order-preflight.js";
 import { findCandidate, findCandidatesByIdPrefix, markCandidateStatus } from "../storage/candidates.js";
 import { saveExecution } from "../storage/executions.js";
 import { writeLog } from "../storage/logs.js";
+import { getAvailableCash } from "../toss/account.js";
 import { parseTossError } from "../toss/client.js";
 import { placeOrder, verifyOrderAcceptance } from "../toss/order.js";
 import type { ExecutionStatus, OrderRequest } from "../types/index.js";
@@ -91,6 +93,34 @@ const orderLabel = (candidate: OrderCandidate): string => {
 
 const formatKstTime = (date: Date): string => {
   return date.toLocaleString("ko-KR", { timeZone: config.timezone });
+};
+
+const assertSufficientBuyingPower = async (candidates: OrderCandidate[], chatId?: string): Promise<void> => {
+  const availableCash = await getAvailableCash();
+  const check = evaluateBuyingPower(candidates, availableCash.amount);
+  if (check.sufficient) return;
+
+  await writeLog("WARN", "plan approval blocked by insufficient Toss buying power", {
+    requiredAmount: check.requiredAmount,
+    availableAmount: check.availableAmount,
+    shortfall: check.shortfall,
+    currency: availableCash.currency,
+    candidateCount: candidates.length
+  });
+  await sendTextMessage(
+    [
+      "[Goldbit 주문 전 잔액 경고]",
+      "",
+      "Toss 매수가능금액이 계획 매수액보다 부족합니다.",
+      `계획 매수액: ${money(check.requiredAmount)}`,
+      `매수가능금액: ${money(check.availableAmount)}`,
+      `부족액: ${money(check.shortfall)}`,
+      "",
+      "주문은 시작하지 않았습니다. 잔액을 정리한 뒤 같은 승인 버튼을 다시 눌러주세요."
+    ].join("\n"),
+    chatId
+  );
+  throw new Error("Toss 매수가능금액이 부족합니다. Telegram 경고 메시지를 확인하세요.");
 };
 
 const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAttempt> => {
@@ -231,18 +261,19 @@ const renderExecutionSummary = (title: string, attempts: ExecutionAttempt[]): st
   ].join("\n");
 };
 
-export const approveCandidate = async (candidateId: string): Promise<void> => {
+export const approveCandidate = async (candidateId: string, chatId?: string): Promise<void> => {
   await writeLog("INFO", "single approval received", { candidateId });
   const candidate = await findCandidate(candidateId);
   if (!candidate) {
     throw new Error(`Candidate not found: ${candidateId}`);
   }
 
+  await assertSufficientBuyingPower([candidate], chatId);
   const attempt = await executeCandidate(candidate);
   await sendTextMessage(renderExecutionSummary("[Goldbit 주문 실행 결과]", [attempt]));
 };
 
-export const approvePlan = async (planGroupId: string): Promise<void> => {
+export const approvePlan = async (planGroupId: string, chatId?: string): Promise<void> => {
   await writeLog("INFO", "plan approval received", { planGroupId });
   const candidates = sortCandidatesByPlanOrder(await findCandidatesByIdPrefix(`${planGroupId}-`)).filter(
     (candidate) => candidate.status === "PENDING" && getCandidatePlanGroupId(candidate) === planGroupId
@@ -252,6 +283,7 @@ export const approvePlan = async (planGroupId: string): Promise<void> => {
     throw new Error(`No pending candidates found for plan: ${planGroupId}`);
   }
 
+  await assertSufficientBuyingPower(candidates, chatId);
   const attempts: ExecutionAttempt[] = [];
   for (const candidate of candidates) {
     attempts.push(await executeCandidate(candidate));
@@ -311,11 +343,11 @@ export const handleApprovalCallback = async (query: TelegramCallbackQuery): Prom
     }
 
     if (action === "approve") {
-      await approveCandidate(targetId);
+      await approveCandidate(targetId, chatId);
     } else if (action === "cancel") {
       await cancelCandidate(targetId);
     } else if (action === "approve-plan") {
-      await approvePlan(targetId);
+      await approvePlan(targetId, chatId);
     } else {
       await cancelPlan(targetId);
     }
