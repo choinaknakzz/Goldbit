@@ -163,11 +163,36 @@ export const renderTradeSyncMessage = (result: TradeSyncResult): string => {
         "예시: /capital 20000"
       ]
     : [];
+  const dailyResultLines =
+    result.dailyResults.length > 1
+      ? [
+          "",
+          "거래일별 T 반영:",
+          ...result.dailyResults.map(
+            (day) =>
+              `- ${day.tradingDate}: ${day.tBefore?.toFixed(4) ?? "N/A"} -> ${day.tAfter?.toFixed(4) ?? "N/A"}${
+                day.tEventType ? ` (${day.tEventType})` : ""
+              }`
+          )
+        ]
+      : [];
+  const positionLines = result.positionReconciliation
+    ? [
+        "",
+        result.positionReconciliation.matched
+          ? "SOXL 보유 대사: 일치"
+          : `SOXL 보유 대사 경고: Goldbit ${result.positionReconciliation.goldbitQuantity}주 @ ${formatMoney(
+              result.positionReconciliation.goldbitAveragePrice
+            )} / Toss ${result.positionReconciliation.tossQuantity}주 @ ${formatMoney(
+              result.positionReconciliation.tossAveragePrice
+            )}`
+      ]
+    : [];
 
   return [
     "[Goldbit 05:30 체결 동기화]",
     "",
-    `거래일: ${result.tradingDate ?? "N/A"}`,
+    `거래일: ${result.tradingDates.length > 0 ? result.tradingDates.join(", ") : result.tradingDate ?? "N/A"}`,
     `조회 체결: ${result.fetchedExecutions}건`,
     `신규 반영: ${result.createdTrades}건`,
     `스킵/기반영: ${result.skippedExecutions}건`,
@@ -176,7 +201,10 @@ export const renderTradeSyncMessage = (result: TradeSyncResult): string => {
     ...tradeLines,
     "",
     `T값 변화: ${tLine}`,
+    `실제 수수료 보정: ${result.adjustedTradeFees}건`,
     `Cycle 종료: ${result.cycleClosed ? `예 (${result.archivedCycleId ?? "archived"})` : "아니오"}`,
+    ...dailyResultLines,
+    ...positionLines,
     ...(result.tEventReason ? ["", `판단 근거: ${result.tEventReason}`] : []),
     ...cycleCloseLines
   ].join("\n");

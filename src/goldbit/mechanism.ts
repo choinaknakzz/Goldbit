@@ -255,21 +255,22 @@ export const generateReverseDailyPlan = (
   const hasReverseStarPrice = hasValidReverseCloses(lastFiveCloses);
   const reverseStarPrice = hasReverseStarPrice ? getReverseStarPrice(lastFiveCloses) : undefined;
   const sellQuantity = getReverseFirstSellQuantity(strategyConfig.quantity, strategyConfig.division);
-  const sellOrders: PlannedOrder[] = [
-    {
-      side: "SELL",
-      orderType: isFirstReverseDay ? "MOC" : "LOC",
-      price: isFirstReverseDay ? null : reverseStarPrice ?? null,
-      quantity: sellQuantity,
-      amount: null,
-      reason: isFirstReverseDay
-        ? "Reverse first day MOC sell only."
-        : hasReverseStarPrice
-          ? "Reverse LOC sell above the five-close star price."
-          : "Enter five valid closes to calculate reverse LOC sell price.",
-      priority: 1
-    }
-  ];
+  const sellOrders: PlannedOrder[] =
+    isFirstReverseDay || hasReverseStarPrice
+      ? [
+          {
+            side: "SELL",
+            orderType: isFirstReverseDay ? "MOC" : "LOC",
+            price: isFirstReverseDay ? null : reverseStarPrice ?? null,
+            quantity: sellQuantity,
+            amount: null,
+            reason: isFirstReverseDay
+              ? "Reverse first day MOC sell must be placed manually because Toss Open API does not support MOC."
+              : "Reverse LOC sell above the five-close star price.",
+            priority: 1
+          }
+        ]
+      : [];
   const buyOrders: PlannedOrder[] =
     isFirstReverseDay || !reverseStarPrice
       ? []
@@ -301,10 +302,12 @@ export const generateReverseDailyPlan = (
     buyOrders,
     sellOrders,
     warnings: [
-      "Reverse Mode Alert: no automated order will be placed.",
-      ...(isFirstReverseDay || hasReverseStarPrice
-        ? []
-        : ["Enter five valid recent closes before using reverse active orders."])
+      ...(isFirstReverseDay
+        ? ["Manual action required: place the reverse first-day MOC sell in Toss Securities."]
+        : []),
+      ...(!isFirstReverseDay && !hasReverseStarPrice
+        ? ["No order candidate was created because five valid recent closes are required."]
+        : [])
     ]
   };
 };
@@ -358,10 +361,14 @@ export const applyDailyTEventToStrategy = (
         : strategyConfig.tValue + (strategyConfig.division - strategyConfig.tValue) * 0.25;
   }
 
+  const mode = shouldEnterReverseMode(tValue, strategyConfig.division) ? "REVERSE" : strategyConfig.mode;
+  const enteredReverse = strategyConfig.mode !== "REVERSE" && mode === "REVERSE";
+
   return {
     ...strategyConfig,
     tValue,
-    mode: shouldEnterReverseMode(tValue, strategyConfig.division) ? "REVERSE" : strategyConfig.mode,
+    mode,
+    reverseStartedAt: enteredReverse ? event.date : strategyConfig.reverseStartedAt,
     updatedAt: new Date().toISOString()
   };
 };

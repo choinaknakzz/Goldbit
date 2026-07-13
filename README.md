@@ -12,6 +12,8 @@ v1은 개인용 단일 프로세스 자동화만 다룹니다. 웹 UI, 대시보
 - 승인 후 `placeOrder()` 호출
 - 매일 17:00 Asia/Seoul 스케줄 실행
 - 매일 05:30 Asia/Seoul 체결 주문 기반 Trade/T값 동기화
+- 5분 간격 미확정 주문 접수 재조회와 만료 후보 정리
+- 최근 거래일 종가 자동 수집 및 Toss 보유 수량/평단 대사
 - 수동 후보 생성 명령
 
 ## 설치
@@ -78,7 +80,7 @@ cd "D:\Goldbit Automation Lab"
 npm run candidate
 ```
 
-`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다. Telegram에서는 후보별 승인 대신 `전체 승인` 버튼 하나로 plan 전체를 승인하며, 승인 시 후보가 plan 순서대로 하나씩 주문됩니다. 모든 주문 시도가 끝나면 성공/실패 건수와 각 주문의 수량, 가격, 실패 사유를 Telegram으로 요약합니다.
+`npm run candidate`는 기존 Goldbit의 Today Action Plan 상태(`GOLDBIT_STATE_DB_PATH`)를 읽고 매수·매도 후보를 Telegram으로 전송합니다. `npm run plan`도 같은 명령입니다. Telegram에서는 후보별 승인 대신 `전체 승인` 버튼 하나로 plan 전체를 승인하며, 승인 시 Toss 실제 매수가능금액이 계획 매수액보다 부족하면 주문을 시작하지 않고 경고합니다. 잔액 검사를 통과하면 후보가 plan 순서대로 하나씩 주문됩니다. 모든 주문 시도가 끝나면 성공/실패 건수와 각 주문의 수량, 가격, 실패 사유를 Telegram으로 요약합니다.
 
 SOXL 현재 정보 Telegram 전송:
 
@@ -92,9 +94,9 @@ npm run soxl
 npm run sync:trades
 ```
 
-`npm run sync:trades`는 Toss 최근 체결 중 가장 최근 미국 거래일 묶음을 읽고, Goldbit state의 `trades`와 `tEvents`를 중복 없이 갱신합니다. 수수료는 주문/체결 조회의 실제 체결 수수료(`execution.commission`)를 우선 사용합니다. 값이 없으면 Toss `/api/v1/commissions`의 US 수수료율로 계산하고, 수수료율 조회 실패 시 Goldbit state의 `feeRatePercent`를 사용합니다. 매도 체결 수량이 Goldbit state의 현재 보유수량보다 크면 음수 보유가 생기지 않도록 해당 체결은 스킵하고 로그에 남깁니다.
+`npm run sync:trades`는 Toss 최근 10일 체결을 미국 거래일별로 오래된 순서부터 읽고, Goldbit state의 `trades`와 `tEvents`를 중복 없이 갱신합니다. 같은 주문의 체결 수량이 증가하면 증가분만 추가하고 해당 거래일 T 이벤트를 전체 체결 기준으로 다시 계산합니다. 수수료는 주문/체결 조회의 실제 체결 수수료(`execution.commission`)를 우선 사용하며, 사후 확정된 수수료는 Trade 이후 현금 흐름과 현재 전략 현금에도 반영합니다. 값이 없으면 Toss `/api/v1/commissions`의 US 수수료율로 계산하고, 수수료율 조회 실패 시 Goldbit state의 `feeRatePercent`를 사용합니다. 매도 체결 수량이 Goldbit state의 현재 보유수량보다 크면 음수 보유가 생기지 않도록 해당 체결은 스킵하고 로그에 남깁니다.
 
-전량 매도 체결로 보유수량이 0이 되면 `FULL_SELL_CYCLE_CLOSE` T 이벤트를 적용합니다. 이 이벤트는 T값을 0으로 만들고, 현재 cycle을 `cycleArchives`에 저장한 뒤 새 cycle 상태로 초기화합니다. 새 cycle의 `initialCapital`과 `cashBalance`는 전량 매도 후 남은 현금으로 시작하며, 최신 수수료율 설정은 유지됩니다.
+전량 매도 체결로 보유수량이 0이 되면 `FULL_SELL_CYCLE_CLOSE` T 이벤트를 적용합니다. 이 이벤트는 T값을 0으로 만들고, 현재 cycle을 `cycleArchives`에 저장한 뒤 새 cycle 상태로 초기화합니다. 이후 Telegram에서 `/capital 금액`을 입력해야 다음 cycle이 시작되며 20분할과 최신 수수료율 설정은 유지됩니다.
 
 Bot만 실행:
 
@@ -110,7 +112,9 @@ Bot 실행 중에는 Telegram에서 `/soxl` 또는 `/status`를 보내 현재 SO
 npm run dev
 ```
 
-Scheduler는 매일 05:30 KST에 체결 주문을 Goldbit Trade/T값으로 동기화하고, 매일 17:00 KST에 Goldbit Today Action Plan 기준 매매 후보를 생성해 Telegram으로 보냅니다. 승인 전에는 주문을 실행하지 않습니다.
+Scheduler는 미국장이 열린 거래일에만 05:30 KST 체결 동기화와 17:00 KST Today Action Plan 전송을 실행합니다. 두 작업 전에 Yahoo Finance 최근 일봉으로 SOXL 종가를 갱신합니다. 5분 유지보수 작업은 미확정 `SUBMITTED` 주문의 접수 상태를 다시 조회하고 만료된 후보를 정리합니다. 승인 전에는 주문을 실행하지 않습니다.
+
+리버스 첫날 MOC는 Toss Open API가 `MARKET + CLS` 조합을 지원하지 않으므로 자동 후보를 만들지 않습니다. Telegram 계획의 수동 MOC 안내에 따라 Toss 앱에서 주문합니다. 리버스 활성일 LOC 후보는 최근 유효 종가 5개가 모두 준비된 경우에만 생성됩니다.
 
 운영 실행:
 
@@ -173,13 +177,12 @@ npm run prisma:studio
 - `TOSS_ACCOUNT_ID`를 수동 지정할 경우 `GET /api/v1/accounts`의 `accountSeq` 값과 일치하는지
 - SOXL LOC 주문 시 `LIMIT + CLS` 조합의 운영 가능 시간
 - 주문 수량은 공식 문서상 정수 문자열만 가능하므로 소수점 후보 수량을 어떻게 정수화할지
-- 주문 응답의 `orderId`를 운영상 어떤 식별자로 보관할지
+- Toss 주문/시장 API 스키마 변경 여부
 
 ## 아직 TODO인 부분
 
-- Goldbit V4 실제 계산식 이식
-- SOXL 후보 수량 정수화 정책 확정
-- 실주문 전 최소 주문 금액, 가격 괴리율, 장시간 검증 같은 운영 guardrail 추가 여부 결정
+- 리버스 전략 규칙을 사용자가 최종 정리한 뒤 세부 수량·T 변화식을 확정
+- 실주문 전 최소 주문 금액, 가격 괴리율, 장시간 검증 같은 추가 guardrail 검토
 
 ## 주의사항
 

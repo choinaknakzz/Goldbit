@@ -65,6 +65,17 @@ export const expirePendingCandidatesByIdPrefix = async (idPrefix: string): Promi
   return result.count;
 };
 
+export const expireStalePendingCandidates = async (now = new Date()): Promise<number> => {
+  const result = await prisma.orderCandidate.updateMany({
+    where: {
+      status: "PENDING",
+      expiresAt: { lt: now }
+    },
+    data: { status: "EXPIRED" }
+  });
+  return result.count;
+};
+
 export const markCandidateStatus = async (
   id: string,
   status: CandidateStatus,
@@ -77,4 +88,19 @@ export const markCandidateStatus = async (
       ...(dateField ? { [dateField]: new Date() } : {})
     }
   });
+};
+
+export const claimPendingCandidate = async (id: string, now = new Date()): Promise<boolean> => {
+  const result = await prisma.orderCandidate.updateMany({
+    where: {
+      id,
+      status: "PENDING",
+      OR: [{ expiresAt: null }, { expiresAt: { gte: now } }]
+    },
+    data: {
+      status: "APPROVED",
+      approvedAt: now
+    }
+  });
+  return result.count === 1;
 };

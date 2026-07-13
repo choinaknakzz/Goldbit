@@ -63,7 +63,9 @@ export const getSoxlStatus = async (symbol = config.targetSymbol): Promise<SoxlS
   const availableCash = await getAvailableCash();
   const position = await getPosition(symbol);
   const currentPrice = await getCurrentPrice(symbol);
-  const recentExecutions = await getRecentExecutions(symbol);
+  const fetchedExecutions = await getRecentExecutions(symbol);
+  const latestTradingDate = fetchedExecutions.map((execution) => execution.tradingDate).filter(Boolean).sort().at(-1);
+  const recentExecutions = fetchedExecutions.filter((execution) => execution.tradingDate === latestTradingDate);
 
   return {
     symbol,

@@ -1,12 +1,22 @@
 import type { OrderCandidate } from "@prisma/client";
 import { assertTargetSymbol, config } from "../config.js";
 import { evaluateBuyingPower } from "../goldbit/order-preflight.js";
-import { findCandidate, findCandidatesByIdPrefix, markCandidateStatus } from "../storage/candidates.js";
-import { saveExecution } from "../storage/executions.js";
+import {
+  claimPendingCandidate,
+  findCandidate,
+  findCandidatesByIdPrefix,
+  markCandidateStatus
+} from "../storage/candidates.js";
+import { saveExecution, updateExecution } from "../storage/executions.js";
 import { writeLog } from "../storage/logs.js";
 import { getAvailableCash } from "../toss/account.js";
 import { parseTossError } from "../toss/client.js";
-import { placeOrder, verifyOrderAcceptance } from "../toss/order.js";
+import {
+  placeOrder,
+  verifyOrderAcceptance,
+  verifyOrderAcceptanceByClientOrderId,
+  type OrderAcceptance
+} from "../toss/order.js";
 import type { ExecutionStatus, OrderRequest } from "../types/index.js";
 import { callTelegramApi, sendTextMessage } from "./message.js";
 
@@ -59,6 +69,10 @@ const assertExecutableCandidate = async (candidate: OrderCandidate): Promise<voi
   if (isExpired(candidate)) {
     await markCandidateStatus(candidate.id, "EXPIRED");
     throw new Error("Candidate is expired.");
+  }
+
+  if (!(await claimPendingCandidate(candidate.id))) {
+    throw new Error("Candidate was already claimed or is no longer pending.");
   }
 };
 
@@ -123,11 +137,84 @@ const assertSufficientBuyingPower = async (candidates: OrderCandidate[], chatId?
   throw new Error("Toss 매수가능금액이 부족합니다. Telegram 경고 메시지를 확인하세요.");
 };
 
+const isDefinitiveOrderFailure = (error: unknown): boolean => {
+  const status = (error as { response?: { status?: number } })?.response?.status;
+  return typeof status === "number" && status >= 400 && status < 500 && ![408, 409, 425, 429].includes(status);
+};
+
+const completeAcceptanceCheck = async (
+  candidate: OrderCandidate,
+  executionId: string,
+  brokerOrderId: string,
+  acceptance: OrderAcceptance,
+  attemptedAt: Date
+): Promise<ExecutionAttempt> => {
+  if (acceptance.accepted) {
+    await updateExecution(executionId, {
+      status: "SUCCESS",
+      brokerOrderId,
+      responsePayload: { acceptance },
+      errorMessage: null,
+      verifiedAt: new Date()
+    });
+    await markCandidateStatus(candidate.id, "EXECUTED", "executedAt");
+    await writeLog("INFO", "order acceptance verified", {
+      candidateId: candidate.id,
+      orderStatus: acceptance.orderStatus
+    });
+    return {
+      candidate,
+      status: "ACCEPTED",
+      attemptedAt,
+      detail: acceptance.detail,
+      orderStatus: acceptance.orderStatus
+    };
+  }
+
+  if (!acceptance.verified) {
+    await updateExecution(executionId, {
+      status: "SUBMITTED",
+      brokerOrderId,
+      responsePayload: { acceptance },
+      errorMessage: acceptance.detail
+    });
+    await markCandidateStatus(candidate.id, "SUBMITTED");
+    return {
+      candidate,
+      status: "SUBMITTED",
+      attemptedAt,
+      detail: acceptance.detail,
+      orderStatus: acceptance.orderStatus
+    };
+  }
+
+  await updateExecution(executionId, {
+    status: "FAILED",
+    brokerOrderId,
+    responsePayload: { acceptance },
+    errorMessage: acceptance.detail,
+    verifiedAt: new Date()
+  });
+  await markCandidateStatus(candidate.id, "FAILED");
+  await writeLog("ERROR", "order acceptance failed", {
+    candidateId: candidate.id,
+    orderStatus: acceptance.orderStatus,
+    detail: acceptance.detail
+  });
+  return {
+    candidate,
+    status: "FAILED",
+    attemptedAt,
+    errorMessage: acceptance.detail,
+    orderStatus: acceptance.orderStatus
+  };
+};
+
 const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAttempt> => {
   const attemptedAt = new Date();
   await assertExecutableCandidate(candidate);
-  await markCandidateStatus(candidate.id, "APPROVED", "approvedAt");
   const orderRequest = createOrderRequest(candidate);
+  const clientOrderId = orderRequest.clientOrderId as string;
 
   try {
     const orderResult = await placeOrder(orderRequest);
@@ -137,90 +224,75 @@ const executeCandidate = async (candidate: OrderCandidate): Promise<ExecutionAtt
       throw new Error("Toss order request did not return an orderId.");
     }
 
-    const acceptance = await verifyOrderAcceptance(brokerOrderId, orderRequest, orderResult.accountId);
-    const executionStatus: ExecutionStatus = acceptance.verified
-      ? acceptance.accepted
-        ? "SUCCESS"
-        : "FAILED"
-      : "SUBMITTED";
-
-    await saveExecution({
+    const execution = await saveExecution({
       candidateId: candidate.id,
+      clientOrderId,
+      symbol: candidate.symbol,
+      side: candidate.side,
+      orderType: candidate.orderType,
+      quantity: candidate.quantity,
+      status: "SUBMITTED",
+      brokerOrderId,
+      requestPayload: orderRequest,
+      responsePayload: { order: orderResult.raw }
+    });
+    await markCandidateStatus(candidate.id, "SUBMITTED");
+
+    try {
+      const acceptance = await verifyOrderAcceptance(brokerOrderId, orderRequest, orderResult.accountId);
+      return await completeAcceptanceCheck(candidate, execution.id, brokerOrderId, acceptance, attemptedAt);
+    } catch (error) {
+      const errorMessage = parseTossError(error);
+      await updateExecution(execution.id, { status: "SUBMITTED", brokerOrderId, errorMessage });
+      await writeLog("WARN", "order submitted but acceptance lookup failed", {
+        candidateId: candidate.id,
+        error: errorMessage
+      });
+      return { candidate, status: "SUBMITTED", attemptedAt, errorMessage };
+    }
+  } catch (error) {
+    const errorMessage = parseTossError(error);
+    const recovered = await verifyOrderAcceptanceByClientOrderId(clientOrderId, orderRequest).catch(() => null);
+    const executionStatus: ExecutionStatus = recovered
+      ? "SUBMITTED"
+      : isDefinitiveOrderFailure(error)
+        ? "FAILED"
+        : "SUBMITTED";
+    const execution = await saveExecution({
+      candidateId: candidate.id,
+      clientOrderId,
       symbol: candidate.symbol,
       side: candidate.side,
       orderType: candidate.orderType,
       quantity: candidate.quantity,
       status: executionStatus,
-      brokerOrderId,
-      requestPayload: orderRequest,
-      responsePayload: {
-        order: orderResult.raw,
-        acceptance
-      },
-      errorMessage: acceptance.accepted ? undefined : acceptance.detail
-    });
-
-    if (acceptance.accepted) {
-      await markCandidateStatus(candidate.id, "EXECUTED", "executedAt");
-      await writeLog("INFO", "order acceptance verified", {
-        candidateId: candidate.id,
-        brokerOrderId,
-        orderStatus: acceptance.orderStatus
-      });
-      return {
-        candidate,
-        status: "ACCEPTED",
-        attemptedAt,
-        detail: acceptance.detail,
-        orderStatus: acceptance.orderStatus
-      };
-    }
-
-    if (!acceptance.verified) {
-      await markCandidateStatus(candidate.id, "SUBMITTED");
-      await writeLog("WARN", "order submitted but acceptance was not verified", {
-        candidateId: candidate.id,
-        brokerOrderId,
-        orderStatus: acceptance.orderStatus
-      });
-      return {
-        candidate,
-        status: "SUBMITTED",
-        attemptedAt,
-        detail: acceptance.detail,
-        orderStatus: acceptance.orderStatus
-      };
-    }
-
-    await markCandidateStatus(candidate.id, "FAILED");
-    await writeLog("ERROR", "order acceptance failed", {
-      candidateId: candidate.id,
-      brokerOrderId,
-      orderStatus: acceptance.orderStatus,
-      detail: acceptance.detail
-    });
-    return {
-      candidate,
-      status: "FAILED",
-      attemptedAt,
-      errorMessage: acceptance.detail,
-      orderStatus: acceptance.orderStatus
-    };
-  } catch (error) {
-    const errorMessage = parseTossError(error);
-    await saveExecution({
-      candidateId: candidate.id,
-      symbol: candidate.symbol,
-      side: candidate.side,
-      orderType: candidate.orderType,
-      quantity: candidate.quantity,
-      status: "FAILED",
+      brokerOrderId: recovered?.brokerOrderId,
       requestPayload: orderRequest,
       errorMessage
     });
-    await markCandidateStatus(candidate.id, "FAILED");
-    await writeLog("ERROR", "order execution failed", { candidateId: candidate.id, error: errorMessage });
-    return { candidate, status: "FAILED", attemptedAt, errorMessage };
+
+    if (recovered) {
+      return completeAcceptanceCheck(
+        candidate,
+        execution.id,
+        recovered.brokerOrderId,
+        recovered.acceptance,
+        attemptedAt
+      );
+    }
+
+    if (executionStatus === "FAILED") {
+      await markCandidateStatus(candidate.id, "FAILED");
+      await writeLog("ERROR", "order request definitively failed", { candidateId: candidate.id, error: errorMessage });
+      return { candidate, status: "FAILED", attemptedAt, errorMessage };
+    }
+
+    await markCandidateStatus(candidate.id, "SUBMITTED");
+    await writeLog("WARN", "order request outcome is unknown and will be reconciled", {
+      candidateId: candidate.id,
+      error: errorMessage
+    });
+    return { candidate, status: "SUBMITTED", attemptedAt, errorMessage };
   }
 };
 

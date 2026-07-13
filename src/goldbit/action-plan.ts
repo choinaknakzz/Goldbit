@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import { expirePendingCandidatesByIdPrefix, saveCandidate } from "../storage/candidates.js";
 import { writeLog } from "../storage/logs.js";
 import { getCurrentPrice } from "../toss/price.js";
+import { refreshSoxlCloseState } from "../market/soxl-closes.js";
 import type { CandidateDraft, OrderSide, OrderType } from "../types/index.js";
 import { sendActionPlanMessage, sendTextMessage } from "../telegram/message.js";
 import { generateNormalDailyPlan, generateReverseDailyPlan } from "./mechanism.js";
@@ -12,7 +13,7 @@ import { readGoldbitState, saveGoldbitPlanSnapshot } from "./state.js";
 type PlannedOrderType = Extract<OrderType, PlannedOrder["orderType"]>;
 
 const isSupportedOrderType = (orderType: PlannedOrder["orderType"]): orderType is PlannedOrderType => {
-  return ["LOC", "MOC", "LIMIT"].includes(orderType);
+  return ["LOC", "LIMIT"].includes(orderType);
 };
 
 const orderAmount = (order: PlannedOrder): number | undefined => {
@@ -27,6 +28,14 @@ const planBaseId = (plan: DailyPlan): string => `${planDateCompact(plan)}-${plan
 
 const createPlanSessionId = (): string => Date.now().toString(36);
 
+const getKstDate = (): string =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: config.timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+
 const toCandidate = (
   plan: DailyPlan,
   order: PlannedOrder,
@@ -34,7 +43,7 @@ const toCandidate = (
   groupId: string,
   baseId: string
 ): CandidateDraft | null => {
-  if (!isSupportedOrderType(order.orderType) || !order.quantity || order.quantity < 1) {
+  if (!isSupportedOrderType(order.orderType) || !order.quantity || order.quantity < 1 || !order.price) {
     return null;
   }
 
@@ -67,6 +76,11 @@ const toCandidate = (
 };
 
 const buildPlanFromGoldbitState = async (): Promise<DailyPlan> => {
+  await refreshSoxlCloseState().catch(async (error) => {
+    await writeLog("WARN", "SOXL daily close refresh failed; using saved close data", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  });
   const state = readGoldbitState();
   if (state.pendingCycleCapitalInput) {
     throw new Error("NEW_CYCLE_CAPITAL_REQUIRED");
@@ -79,10 +93,13 @@ const buildPlanFromGoldbitState = async (): Promise<DailyPlan> => {
   };
   const currentPrice = state.previousClose > 0 ? undefined : await getCurrentPrice(config.targetSymbol);
   const previousClose = state.previousClose > 0 ? state.previousClose : currentPrice?.price;
+  const reversePlanDates = state.dailyPlanSnapshots
+    .filter((snapshot) => snapshot.plan.mode === "REVERSE")
+    .map((snapshot) => snapshot.date)
+    .sort();
+  const firstReversePlanDate = reversePlanDates[0];
   const isFirstReverseDay =
-    liveStrategy.mode === "REVERSE" &&
-    Boolean(liveStrategy.reverseStartedAt) &&
-    !state.trades.some((trade) => trade.tradedAt === liveStrategy.reverseStartedAt);
+    liveStrategy.mode === "REVERSE" && (!firstReversePlanDate || firstReversePlanDate === getKstDate());
 
   return liveStrategy.mode === "REVERSE"
     ? generateReverseDailyPlan(liveStrategy, state.lastFiveCloses, isFirstReverseDay)

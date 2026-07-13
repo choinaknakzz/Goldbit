@@ -90,6 +90,7 @@ const getNewYorkDate = (dateText: string): string => {
 };
 
 const getExecutionOrderType = (order: OrdersResponse["orders"][number]): Execution["orderType"] | undefined => {
+  if (order.orderType === "MARKET" && order.timeInForce === "CLS") return "MOC";
   if (order.orderType === "MARKET") return "MARKET";
   if (order.orderType === "LIMIT" && order.timeInForce === "CLS") return "LOC";
   if (order.orderType === "LIMIT") return "LIMIT";
@@ -178,11 +179,5 @@ export const getRecentExecutions = async (symbol: string): Promise<Execution[]> 
         tradingDate: getNewYorkDate(executedAt)
       };
     });
-  const latestTradingDate = executions
-    .map((execution) => execution.tradingDate)
-    .filter((tradingDate): tradingDate is string => Boolean(tradingDate))
-    .sort()
-    .at(-1);
-
-  return executions.filter((execution) => execution.tradingDate === latestTradingDate);
+  return executions.sort((left, right) => left.executedAt.localeCompare(right.executedAt));
 };

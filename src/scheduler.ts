@@ -1,10 +1,15 @@
 import cron from "node-cron";
 import { config } from "./config.js";
 import { createAndSendGoldbitActionPlan } from "./goldbit/action-plan.js";
+import { reconcileSubmittedOrders } from "./goldbit/order-reconciliation.js";
 import { syncFilledOrdersToGoldbitState } from "./goldbit/trade-sync.js";
 import { getNewYorkDateKey, isNyseTradingDate } from "./market/us-market-calendar.js";
+import { refreshSoxlCloseState } from "./market/soxl-closes.js";
+import { expireStalePendingCandidates } from "./storage/candidates.js";
 import { writeLog } from "./storage/logs.js";
 import { sendTextMessage, sendTradeSyncMessage } from "./telegram/message.js";
+
+let orderMaintenanceRunning = false;
 
 const shouldRunForNyseTradingDate = async (job: string, instant = new Date()): Promise<boolean> => {
   const newYorkDate = getNewYorkDateKey(instant);
@@ -30,6 +35,11 @@ export const runScheduledTradeSync = async (instant = new Date()): Promise<void>
   if (!(await shouldRunForNyseTradingDate("tradeSync", instant))) return;
 
   try {
+    await refreshSoxlCloseState().catch(async (error) => {
+      await writeLog("WARN", "scheduled SOXL close refresh failed", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
     const result = await syncFilledOrdersToGoldbitState();
     await sendTradeSyncMessage(result);
   } catch (error) {
@@ -46,7 +56,36 @@ export const runScheduledTradeSync = async (instant = new Date()): Promise<void>
   }
 };
 
+export const runOrderMaintenance = async (): Promise<void> => {
+  if (orderMaintenanceRunning) return;
+  orderMaintenanceRunning = true;
+  try {
+    const expiredCandidates = await expireStalePendingCandidates();
+    const reconciliation = await reconcileSubmittedOrders();
+    if (expiredCandidates > 0) {
+      await writeLog("INFO", "stale pending candidates expired", { expiredCandidates });
+    }
+    if (reconciliation.unresolved > 0) {
+      await writeLog("WARN", "submitted orders remain unresolved", { ...reconciliation });
+    }
+  } catch (error) {
+    await writeLog("ERROR", "order maintenance failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  } finally {
+    orderMaintenanceRunning = false;
+  }
+};
+
 export const startScheduler = async (): Promise<void> => {
+  cron.schedule(
+    "*/5 * * * *",
+    () => {
+      void runOrderMaintenance();
+    },
+    { timezone: config.timezone }
+  );
+
   cron.schedule(
     "30 5 * * *",
     () => {
@@ -70,10 +109,12 @@ export const startScheduler = async (): Promise<void> => {
   await writeLog("INFO", "scheduler started", {
     schedules: {
       tradeSync: "30 5 * * *",
-      actionPlan: "0 17 * * *"
+      actionPlan: "0 17 * * *",
+      orderMaintenance: "*/5 * * * *"
     },
     timezone: config.timezone,
     targetSymbol: config.targetSymbol,
     source: "Goldbit Today Action Plan"
   });
+  void runOrderMaintenance();
 };

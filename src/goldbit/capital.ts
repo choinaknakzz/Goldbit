@@ -1,5 +1,5 @@
 import type { GoldbitLocalState } from "./mechanism-types.js";
-import { readGoldbitState, writeGoldbitState } from "./state.js";
+import { readGoldbitStateSnapshot, writeGoldbitState } from "./state.js";
 
 const FIXED_DIVISION = 20;
 
@@ -24,7 +24,8 @@ export const applyNextCycleCapital = (amount: number): GoldbitLocalState => {
     throw new Error("Next cycle capital must be greater than 0.");
   }
 
-  const state = readGoldbitState();
+  const snapshot = readGoldbitStateSnapshot();
+  const state = snapshot.state;
   const now = new Date().toISOString();
   const capital = roundMoney(amount);
   const nextState: GoldbitLocalState = {
@@ -44,6 +45,6 @@ export const applyNextCycleCapital = (amount: number): GoldbitLocalState => {
     pendingCycleCapitalInput: undefined
   };
 
-  writeGoldbitState(nextState);
+  writeGoldbitState(nextState, snapshot.rawData);
   return nextState;
 };

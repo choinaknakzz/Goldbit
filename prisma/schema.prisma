@@ -27,6 +27,7 @@ model OrderCandidate {
 model OrderExecution {
   id              String   @id @default(cuid())
   candidateId     String
+  clientOrderId   String?
   symbol          String
   side            String
   orderType       String
@@ -37,6 +38,12 @@ model OrderExecution {
   responsePayload String?
   errorMessage    String?
   createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  verifiedAt      DateTime?
+
+  @@index([status])
+  @@index([brokerOrderId])
+  @@index([clientOrderId])
 }
 
 model AppLog {

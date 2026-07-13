@@ -17,6 +17,7 @@ interface OrderLookupResponse {
 
 interface TossOrder {
   orderId: string;
+  clientOrderId?: string | null;
   symbol?: string;
   status?: string | null;
   orderStatus?: string | null;
@@ -38,6 +39,11 @@ export interface OrderAcceptance {
   orderStatus: string;
   detail: string;
   raw?: unknown;
+}
+
+export interface OrderAcceptanceLookup {
+  brokerOrderId: string;
+  acceptance: OrderAcceptance;
 }
 
 const sleep = (milliseconds: number): Promise<void> => {
@@ -137,13 +143,34 @@ const findOrderById = async (
     params: {
       status: statusGroup,
       symbol,
-      from: getKstDate(addDays(today, -1)),
+      from: getKstDate(addDays(today, -10)),
       to: getKstDate(today),
       limit: 100
     }
   });
 
   return response.data.result.orders.find((order) => order.orderId === orderId) ?? null;
+};
+
+const findOrderByClientOrderId = async (
+  accountSeq: string,
+  clientOrderId: string,
+  symbol: string,
+  statusGroup: "OPEN" | "CLOSED"
+): Promise<TossOrder | null> => {
+  const client = await createTossClient(accountSeq);
+  const today = new Date();
+  const response = await client.get<ApiResponse<OrderLookupResponse>>("/api/v1/orders", {
+    params: {
+      status: statusGroup,
+      symbol,
+      from: getKstDate(addDays(today, -10)),
+      to: getKstDate(today),
+      limit: 100
+    }
+  });
+
+  return response.data.result.orders.find((order) => order.clientOrderId === clientOrderId) ?? null;
 };
 
 export const verifyOrderAcceptance = async (
@@ -172,6 +199,30 @@ export const verifyOrderAcceptance = async (
     orderStatus: "NOT_FOUND",
     detail: "주문 요청 후 토스 주문 목록에서 orderId를 확인하지 못했습니다."
   };
+};
+
+export const verifyOrderAcceptanceByClientOrderId = async (
+  clientOrderId: string,
+  orderRequest: OrderRequest,
+  accountSeq = orderRequest.accountId,
+  attempts = 3,
+  delayMs = 2_000
+): Promise<OrderAcceptanceLookup | null> => {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    for (const statusGroup of ["OPEN", "CLOSED"] as const) {
+      const order = await findOrderByClientOrderId(accountSeq, clientOrderId, orderRequest.symbol, statusGroup);
+      if (order) {
+        return {
+          brokerOrderId: order.orderId,
+          acceptance: classifyOrder(order, statusGroup)
+        };
+      }
+    }
+
+    if (attempt < attempts) await sleep(delayMs);
+  }
+
+  return null;
 };
 
 export const placeOrder = async (orderRequest: OrderRequest): Promise<OrderResult> => {
