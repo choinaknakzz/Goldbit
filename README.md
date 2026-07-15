@@ -13,6 +13,7 @@ v1은 개인용 단일 프로세스 자동화만 다룹니다. 웹 UI, 대시보
 - 매일 17:00 Asia/Seoul 스케줄 실행
 - 매일 05:30 Asia/Seoul 체결 주문 기반 Trade/T값 동기화
 - 5분 간격 미확정 주문 접수 재조회와 만료 후보 정리
+- 공유 Toss 토큰의 단독 발급 및 만료 전 갱신
 - 최근 거래일 종가 자동 수집 및 Toss 보유 수량/평단 대사
 - 수동 후보 생성 명령
 
@@ -49,6 +50,7 @@ TOSS_APP_SECRET=
 TOSS_ACCESS_TOKEN=
 TOSS_REFRESH_TOKEN=
 TOSS_ACCOUNT_ID=
+TOSS_TOKEN_CACHE_PATH=D:\Goldbit Automation Lab\.cache\toss-token.json
 
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
@@ -113,6 +115,8 @@ npm run dev
 ```
 
 Scheduler는 미국장이 열린 거래일에만 05:30 KST 체결 동기화와 17:00 KST Today Action Plan 전송을 실행합니다. 두 작업 전에 Yahoo Finance 최근 일봉으로 SOXL 종가를 갱신합니다. 5분 유지보수 작업은 미확정 `SUBMITTED` 주문의 접수 상태를 다시 조회하고 만료된 후보를 정리합니다. 승인 전에는 주문을 실행하지 않습니다.
+
+Automation Lab은 Toss 액세스 토큰의 유일한 발급 주체입니다. 시작 시와 5분 간격으로 공유 캐시 토큰의 남은 수명을 확인하고, 10분 이하일 때만 새 토큰을 발급합니다. `D:\Goldbit` 웹 앱은 같은 `TOSS_TOKEN_CACHE_PATH`를 읽어 시세 조회에만 사용하며 토큰을 발급하지 않습니다.
 
 리버스 첫날 MOC는 Toss Open API가 `MARKET + CLS` 조합을 지원하지 않으므로 자동 후보를 만들지 않습니다. Telegram 계획의 수동 MOC 안내에 따라 Toss 앱에서 주문합니다. 리버스 활성일 LOC 후보는 최근 유효 종가 5개가 모두 준비된 경우에만 생성됩니다.
 

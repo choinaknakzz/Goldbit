@@ -18,15 +18,21 @@ const lockRetryMs = 250;
 const staleLockMs = 30_000;
 const lockTimeoutMs = 75_000;
 
+interface AccessTokenOptions {
+  forceRefresh?: boolean;
+  minimumTtlMs?: number;
+  skipConfiguredToken?: boolean;
+}
+
 const sleep = async (ms: number): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
-const readTokenCache = async (): Promise<TossTokenResult | undefined> => {
+const readTokenCache = async (minimumTtlMs = minTokenTtlMs): Promise<TossTokenResult | undefined> => {
   try {
     const text = await readFile(config.toss.tokenCachePath, "utf8");
     const token = JSON.parse(text) as TossTokenResult;
-    if (!token.accessToken || token.expiresAt - Date.now() <= minTokenTtlMs) {
+    if (!token.accessToken || token.expiresAt - Date.now() <= minimumTtlMs) {
       return undefined;
     }
     cachedToken = token;
@@ -115,17 +121,19 @@ export const clearCachedAccessToken = (): void => {
   cachedToken = undefined;
 };
 
-export const getAccessToken = async (options?: { forceRefresh?: boolean }): Promise<string> => {
-  if (config.toss.accessToken && !options?.forceRefresh) {
+export const getAccessToken = async (options?: AccessTokenOptions): Promise<string> => {
+  const minimumTtlMs = Math.max(options?.minimumTtlMs ?? minTokenTtlMs, minTokenTtlMs);
+
+  if (config.toss.accessToken && !options?.forceRefresh && !options?.skipConfiguredToken) {
     return config.toss.accessToken;
   }
 
-  if (!options?.forceRefresh && cachedToken && cachedToken.expiresAt - Date.now() > minTokenTtlMs) {
+  if (!options?.forceRefresh && cachedToken && cachedToken.expiresAt - Date.now() > minimumTtlMs) {
     return cachedToken.accessToken;
   }
 
   if (!options?.forceRefresh) {
-    const fileToken = await readTokenCache();
+    const fileToken = await readTokenCache(minimumTtlMs);
     if (fileToken) {
       return fileToken.accessToken;
     }
@@ -133,7 +141,7 @@ export const getAccessToken = async (options?: { forceRefresh?: boolean }): Prom
 
   const token = await withTokenRefreshLock(async () => {
     if (!options?.forceRefresh) {
-      const fileToken = await readTokenCache();
+      const fileToken = await readTokenCache(minimumTtlMs);
       if (fileToken) {
         return fileToken;
       }

@@ -8,8 +8,11 @@ import { refreshSoxlCloseState } from "./market/soxl-closes.js";
 import { expireStalePendingCandidates } from "./storage/candidates.js";
 import { writeLog } from "./storage/logs.js";
 import { sendTextMessage, sendTradeSyncMessage } from "./telegram/message.js";
+import { getAccessToken } from "./toss/auth.js";
 
 let orderMaintenanceRunning = false;
+let tossTokenMaintenanceRunning = false;
+const sharedTokenMinimumTtlMs = 10 * 60 * 1000;
 
 const shouldRunForNyseTradingDate = async (job: string, instant = new Date()): Promise<boolean> => {
   const newYorkDate = getNewYorkDateKey(instant);
@@ -77,7 +80,33 @@ export const runOrderMaintenance = async (): Promise<void> => {
   }
 };
 
+export const runTossTokenMaintenance = async (): Promise<void> => {
+  if (tossTokenMaintenanceRunning || !config.toss.appKey || !config.toss.appSecret) return;
+
+  tossTokenMaintenanceRunning = true;
+  try {
+    await getAccessToken({
+      minimumTtlMs: sharedTokenMinimumTtlMs,
+      skipConfiguredToken: true
+    });
+  } catch (error) {
+    await writeLog("ERROR", "shared Toss token maintenance failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  } finally {
+    tossTokenMaintenanceRunning = false;
+  }
+};
+
 export const startScheduler = async (): Promise<void> => {
+  cron.schedule(
+    "*/5 * * * *",
+    () => {
+      void runTossTokenMaintenance();
+    },
+    { timezone: config.timezone }
+  );
+
   cron.schedule(
     "*/5 * * * *",
     () => {
@@ -110,11 +139,14 @@ export const startScheduler = async (): Promise<void> => {
     schedules: {
       tradeSync: "30 5 * * *",
       actionPlan: "0 17 * * *",
-      orderMaintenance: "*/5 * * * *"
+      orderMaintenance: "*/5 * * * *",
+      tossTokenMaintenance: "*/5 * * * *"
     },
     timezone: config.timezone,
     targetSymbol: config.targetSymbol,
-    source: "Goldbit Today Action Plan"
+    source: "Goldbit Today Action Plan",
+    tossTokenOwner: "Goldbit Automation Lab"
   });
+  await runTossTokenMaintenance();
   void runOrderMaintenance();
 };
