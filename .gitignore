@@ -4,4 +4,9 @@ dist
 coverage
 .env
 .env.local
+.telegram-offset
+.telegram-downloads
+.telegram-bot.log
+.telegram-sessions.json
+*.traineddata
 prisma/dev.db

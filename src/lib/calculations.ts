@@ -1,5 +1,7 @@
 import type {
   DailyPlan,
+  DailyPlanSnapshot,
+  DailyTEventSuggestion,
   DailyTEventInput,
   Division,
   NormalTEvent,
@@ -16,6 +18,34 @@ const FIRST_BUY_LOC_BUFFER = 0.12;
 function getBuyQuantity(amount: number, price: number | null | undefined) {
   if (!price || price <= 0) return null;
   return Math.floor(amount / price);
+}
+
+function getPlannedAmount(
+  price: number | null | undefined,
+  quantity: number | null,
+) {
+  if (!price || !quantity) return null;
+  return round(price * quantity);
+}
+
+function getFirstHalfBuyQuantities(
+  dailyBuyAmount: number,
+  starBuyPrice: number,
+  averagePrice: number,
+) {
+  let starQuantity = getBuyQuantity(round(dailyBuyAmount / 2), starBuyPrice) ?? 0;
+  let averageQuantity =
+    getBuyQuantity(round(dailyBuyAmount / 2), averagePrice) ?? 0;
+
+  if (
+    (starQuantity === 0 || averageQuantity === 0) &&
+    starBuyPrice + averagePrice <= dailyBuyAmount
+  ) {
+    starQuantity = Math.max(starQuantity, 1);
+    averageQuantity = Math.max(averageQuantity, 1);
+  }
+
+  return { starQuantity, averageQuantity };
 }
 
 export function getSoxlStarRate(tValue: number, division: Division): number {
@@ -177,25 +207,34 @@ export function generateNormalDailyPlan(
     const firstBuyPrice = previousClose
       ? getFirstBuyLocPrice(previousClose)
       : null;
+    const firstBuyQuantity = previousClose
+      ? getBuyQuantity(dailyBuyAmount, previousClose)
+      : null;
     buyOrders.push({
       side: "BUY",
       orderType: "LOC",
       price: firstBuyPrice,
-      quantity: getBuyQuantity(dailyBuyAmount, firstBuyPrice),
-      amount: dailyBuyAmount,
+      quantity: firstBuyQuantity,
+      amount: getPlannedAmount(previousClose, firstBuyQuantity),
       reason: previousClose
-        ? "First buy LOC plan at 12% above previous close."
+        ? "First buy LOC limit is 12% above previous close; quantity uses previous close budget sizing."
         : "First buy: enter previous close to calculate LOC price.",
       priority: 1,
     });
   } else if (phase === "FIRST_HALF" && starPrice) {
+    const starBuyPrice = getBuyPrice(starPrice);
+    const { starQuantity, averageQuantity } = getFirstHalfBuyQuantities(
+      dailyBuyAmount,
+      starBuyPrice,
+      strategyConfig.averagePrice,
+    );
     buyOrders.push(
       {
         side: "BUY",
         orderType: "LOC",
-        price: getBuyPrice(starPrice),
-        quantity: getBuyQuantity(round(dailyBuyAmount / 2), getBuyPrice(starPrice)),
-        amount: round(dailyBuyAmount / 2),
+        price: starBuyPrice,
+        quantity: starQuantity,
+        amount: getPlannedAmount(starBuyPrice, starQuantity),
         reason: "Half of one-turn budget at the star buy point.",
         priority: 1,
       },
@@ -203,47 +242,53 @@ export function generateNormalDailyPlan(
         side: "BUY",
         orderType: "LOC",
         price: strategyConfig.averagePrice,
-        quantity: getBuyQuantity(round(dailyBuyAmount / 2), strategyConfig.averagePrice),
-        amount: round(dailyBuyAmount / 2),
+        quantity: averageQuantity,
+        amount: getPlannedAmount(strategyConfig.averagePrice, averageQuantity),
         reason: "Half of one-turn budget at average price.",
         priority: 2,
       },
     );
   } else if (starPrice) {
+    const starBuyPrice = getBuyPrice(starPrice);
+    const starQuantity = getBuyQuantity(dailyBuyAmount, starBuyPrice);
     buyOrders.push({
       side: "BUY",
       orderType: "LOC",
-      price: getBuyPrice(starPrice),
-      quantity: getBuyQuantity(dailyBuyAmount, getBuyPrice(starPrice)),
-      amount: dailyBuyAmount,
+      price: starBuyPrice,
+      quantity: starQuantity,
+      amount: getPlannedAmount(starBuyPrice, starQuantity),
       reason: "Full one-turn budget at the star buy point.",
       priority: 1,
     });
   }
 
   if (strategyConfig.quantity > 0 && starPrice) {
-    sellOrders.push(
-      {
+    const quarterSellQuantity = getQuarterSellQuantity(strategyConfig.quantity);
+    const limitSellQuantity = strategyConfig.quantity - quarterSellQuantity;
+
+    if (quarterSellQuantity > 0) {
+      sellOrders.push({
         side: "SELL",
         orderType: "LOC",
         price: starPrice,
-        quantity: getQuarterSellQuantity(strategyConfig.quantity),
+        quantity: quarterSellQuantity,
         amount: null,
         reason: "Quarter sell at star price.",
         priority: 1,
-      },
-      {
+      });
+    }
+
+    if (limitSellQuantity > 0) {
+      sellOrders.push({
         side: "SELL",
         orderType: "LIMIT",
         price: getSoxlLimitSellPrice(strategyConfig.averagePrice),
-        quantity:
-          strategyConfig.quantity -
-          getQuarterSellQuantity(strategyConfig.quantity),
+        quantity: limitSellQuantity,
         amount: null,
         reason: "SOXL 20% target limit sell.",
         priority: 2,
-      },
-    );
+      });
+    }
   }
 
   return {
@@ -392,5 +437,143 @@ export function applyDailyTEventToStrategy(
       ? "REVERSE"
       : strategyConfig.mode,
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function getTradeAmount(trade: Trade) {
+  return round(trade.price * trade.quantity);
+}
+
+function getPlanBuyAmount(plan: DailyPlan) {
+  return plan.buyOrders.reduce((sum, order) => sum + (order.amount ?? 0), 0);
+}
+
+export function suggestDailyTEvent(
+  strategyConfig: StrategyConfig,
+  planSnapshot: DailyPlanSnapshot | null | undefined,
+  trades: Trade[],
+  date: string,
+): DailyTEventSuggestion {
+  const dayTrades = trades.filter((trade) => trade.tradedAt === date);
+  const detectedSummary = dayTrades.map(
+    (trade) =>
+      `${trade.type} ${trade.orderType} ${trade.quantity} @ ${round(trade.price, 4)}`,
+  );
+
+  if (!planSnapshot) {
+    return {
+      input: null,
+      confidence: 0,
+      reason: "No saved action plan snapshot for this date.",
+      detectedSummary,
+    };
+  }
+
+  if (dayTrades.length === 0) {
+    return {
+      input: null,
+      confidence: 0,
+      reason: "No confirmed trades for this date.",
+      detectedSummary,
+    };
+  }
+
+  if (planSnapshot.plan.mode === "REVERSE") {
+    const hasBuy = dayTrades.some((trade) => trade.type === "BUY");
+    const hasSell = dayTrades.some((trade) => trade.type === "SELL");
+
+    if (hasBuy) {
+      return {
+        input: {
+          date,
+          mode: "REVERSE",
+          reverseTEvent: "BUY",
+          memo: "Suggested from confirmed trades and saved action plan.",
+        },
+        confidence: 0.85,
+        reason: "Reverse-mode buy trade was detected.",
+        detectedSummary,
+      };
+    }
+
+    if (hasSell) {
+      return {
+        input: {
+          date,
+          mode: "REVERSE",
+          reverseTEvent: "SELL",
+          memo: "Suggested from confirmed trades and saved action plan.",
+        },
+        confidence: 0.85,
+        reason: "Reverse-mode sell trade was detected.",
+        detectedSummary,
+      };
+    }
+  }
+
+  const buyTrades = dayTrades.filter((trade) => trade.type === "BUY");
+  const sellTrades = dayTrades.filter((trade) => trade.type === "SELL");
+  const totalBuyAmount = buyTrades.reduce(
+    (sum, trade) => sum + getTradeAmount(trade),
+    0,
+  );
+  const planBuyAmount = getPlanBuyAmount(planSnapshot.plan);
+  const buyFillRatio = planBuyAmount > 0 ? totalBuyAmount / planBuyAmount : 0;
+  const hasLimitSell = sellTrades.some((trade) => trade.orderType === "LIMIT");
+  const hasLocSell = sellTrades.some((trade) => trade.orderType === "LOC");
+
+  if (hasLimitSell && buyTrades.length > 0) {
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent:
+          buyFillRatio >= 0.7
+            ? "LIMIT_SELL_AND_FULL_LOC_BUY"
+            : "LIMIT_SELL_AND_HALF_LOC_BUY",
+        memo: "Suggested from confirmed trades and saved action plan.",
+      },
+      confidence: buyFillRatio >= 0.3 ? 0.85 : 0.65,
+      reason: `LIMIT sell and LOC buy were detected. Buy fill ratio: ${round(buyFillRatio * 100, 0)}%.`,
+      detectedSummary,
+    };
+  }
+
+  if (hasLocSell && buyTrades.length === 0) {
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent: "QUARTER_SELL",
+        memo: "Suggested from confirmed trades and saved action plan.",
+      },
+      confidence: 0.8,
+      reason: "LOC sell was detected without same-day buy fills.",
+      detectedSummary,
+    };
+  }
+
+  if (buyTrades.length > 0) {
+    const normalTEvent: NormalTEvent =
+      buyFillRatio >= 0.7 ? "FULL_BUY" : "HALF_BUY";
+
+    return {
+      input: {
+        date,
+        mode: "NORMAL",
+        normalTEvent,
+        memo: "Suggested from confirmed trades and saved action plan.",
+      },
+      confidence: buyFillRatio >= 0.3 ? 0.9 : 0.55,
+      reason: `Confirmed buy amount ${round(totalBuyAmount)} vs planned buy amount ${round(planBuyAmount)} (${round(buyFillRatio * 100, 0)}%).`,
+      detectedSummary,
+    };
+  }
+
+  return {
+    input: null,
+    confidence: 0,
+    reason: "Confirmed trades did not match a supported T update pattern.",
+    detectedSummary,
   };
 }

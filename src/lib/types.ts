@@ -3,6 +3,7 @@ export type SymbolCode = "SOXL";
 export type StrategyMode = "NORMAL" | "REVERSE";
 export type TradeType = "BUY" | "SELL";
 export type OrderType = "LOC" | "MOC" | "LIMIT";
+export type PendingTradeStatus = "NEEDS_REVIEW" | "CONFIRMED" | "REJECTED";
 export type NormalTEvent =
   | "FULL_BUY"
   | "HALF_BUY"
@@ -69,6 +70,20 @@ export interface DailyPlan {
   warnings: string[];
 }
 
+export interface DailyPlanSnapshot {
+  date: string;
+  plan: DailyPlan;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyTEventSuggestion {
+  input: DailyTEventInput | null;
+  confidence: number;
+  reason: string;
+  detectedSummary: string[];
+}
+
 export interface Trade {
   id: string;
   strategyId: string;
@@ -101,6 +116,19 @@ export interface TradeInput {
   reason: string;
   tradedAt: string;
   memo?: string;
+}
+
+export interface PendingTrade {
+  id: string;
+  source: "SCREENSHOT" | "TELEGRAM";
+  status: PendingTradeStatus;
+  rawText: string;
+  parsedTrade: TradeInput | null;
+  confidence: number;
+  notes: string[];
+  createdAt: string;
+  confirmedTradeId?: string;
+  resolvedAt?: string;
 }
 
 export interface DailyTEventInput {

@@ -1,6 +1,7 @@
 "use client";
 
 import { DailyTEventForm } from "@/components/daily-t-event-form";
+import { OcrTradeReviewCard } from "@/components/ocr-trade-review-card";
 import { TEventHistoryTable } from "@/components/t-event-history-table";
 import { TradeForm } from "@/components/trade-form";
 import { TradeHistoryTable } from "@/components/trade-history-table";
@@ -12,8 +13,13 @@ export default function TradesPage() {
     strategy,
     trades,
     tEvents,
+    dailyPlanSnapshots,
+    pendingTrades,
     feeRatePercent,
     addTrade,
+    addPendingTrade,
+    confirmPendingTrade,
+    rejectPendingTrade,
     addDailyTEvent,
   } = useGoldbitStore();
 
@@ -21,14 +27,27 @@ export default function TradesPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold">Trades</h2>
-        <p className="mt-1 text-muted-foreground">Enter manual fills and preview strategy state changes.</p>
+        <p className="mt-1 text-muted-foreground">
+          Review captured fills, confirm trades, and update daily T changes.
+        </p>
       </div>
+      <OcrTradeReviewCard
+        pendingTrades={pendingTrades}
+        onAddPendingTrade={addPendingTrade}
+        onConfirmPendingTrade={confirmPendingTrade}
+        onRejectPendingTrade={rejectPendingTrade}
+      />
       <TradeForm
         strategy={strategy}
         feeRatePercent={feeRatePercent}
         onAddTrade={addTrade}
       />
-      <DailyTEventForm strategy={strategy} onAddDailyTEvent={addDailyTEvent} />
+      <DailyTEventForm
+        strategy={strategy}
+        trades={trades}
+        dailyPlanSnapshots={dailyPlanSnapshots}
+        onAddDailyTEvent={addDailyTEvent}
+      />
       <Card>
         <CardHeader>
           <CardTitle>Trade History</CardTitle>

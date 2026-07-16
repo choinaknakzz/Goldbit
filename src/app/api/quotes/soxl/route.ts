@@ -1,6 +1,23 @@
 import { NextResponse } from "next/server";
+import { readSharedTossAccessToken } from "@/lib/toss-shared-token";
 
 export const dynamic = "force-dynamic";
+
+interface QuotePayload {
+  symbol: "SOXL";
+  source: string;
+  latestClose: number;
+  latestCloseDate: string;
+  priorClose: number | null;
+  currentPrice: number;
+  latestCloseTime: string | null;
+  currentPriceTime: string | null;
+  timezone: string | null;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
+}
 
 interface YahooChartResult {
   meta?: {
@@ -21,6 +38,15 @@ interface YahooChartResponse {
   chart?: {
     result?: YahooChartResult[];
   };
+}
+
+interface TossPriceResponse {
+  result?: Array<{
+    symbol?: string;
+    timestamp?: string;
+    lastPrice?: string;
+    currency?: string;
+  }>;
 }
 
 function getLastIntradayPrice(result: YahooChartResult) {
@@ -53,7 +79,7 @@ function toNewYorkDate(isoTime: string | null) {
   }).format(new Date(isoTime));
 }
 
-export async function GET() {
+async function fetchYahooQuote(): Promise<QuotePayload | null> {
   const yahooResponse = await fetch(
     "https://query1.finance.yahoo.com/v8/finance/chart/SOXL?range=1d&interval=1m&includePrePost=true",
     { cache: "no-store" },
@@ -68,7 +94,7 @@ export async function GET() {
       const latestIntraday = getLastIntradayPrice(result);
       const latestClose = Number(meta.regularMarketPrice.toFixed(2));
 
-      return NextResponse.json({
+      return {
         symbol: "SOXL",
         source: "Yahoo Finance",
         latestClose,
@@ -87,7 +113,7 @@ export async function GET() {
           : null,
         currentPriceTime: latestIntraday.time,
         timezone: meta.timezone ?? null,
-      });
+      };
     }
   }
 
@@ -97,7 +123,7 @@ export async function GET() {
   );
 
   if (!response.ok) {
-    return NextResponse.json({ error: "Failed to fetch SOXL quote." }, { status: 502 });
+    return null;
   }
 
   const csv = await response.text();
@@ -106,7 +132,7 @@ export async function GET() {
   const values = valueLine.split(",");
   const row = Object.fromEntries(headers.map((header, index) => [header, values[index]]));
 
-  return NextResponse.json({
+  return {
     symbol: "SOXL",
     source: "Stooq",
     latestClose: Number(row.Close),
@@ -120,5 +146,82 @@ export async function GET() {
     high: Number(row.High),
     low: Number(row.Low),
     volume: Number(row.Volume),
-  });
+  };
+}
+
+async function fetchTossCurrentPrice() {
+  const tokenCachePath = process.env.TOSS_TOKEN_CACHE_PATH;
+  if (!tokenCachePath) return null;
+
+  const apiBaseUrl = process.env.TOSS_API_BASE_URL ?? "https://openapi.tossinvest.com";
+  const firstToken = await readSharedTossAccessToken(tokenCachePath);
+  if (!firstToken) return null;
+
+  const requestPrice = (accessToken: string) =>
+    fetch(`${apiBaseUrl}/api/v1/prices?symbols=SOXL`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+
+  let priceResponse = await requestPrice(firstToken);
+  if (priceResponse.status === 401) {
+    const refreshedToken = await readSharedTossAccessToken(tokenCachePath);
+    if (refreshedToken && refreshedToken !== firstToken) {
+      priceResponse = await requestPrice(refreshedToken);
+    }
+  }
+
+  if (!priceResponse.ok) return null;
+
+  const payload = (await priceResponse.json()) as TossPriceResponse;
+  const soxl = payload.result?.find((item) => item.symbol === "SOXL");
+  const currentPrice = Number(soxl?.lastPrice);
+
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return null;
+
+  return {
+    currentPrice,
+    currentPriceTime: soxl?.timestamp ?? null,
+    source: "Toss Open API",
+  };
+}
+
+export async function GET() {
+  const [baseQuote, tossQuote] = await Promise.all([
+    fetchYahooQuote(),
+    fetchTossCurrentPrice(),
+  ]);
+
+  if (baseQuote && tossQuote) {
+    return NextResponse.json({
+      ...baseQuote,
+      source: `${tossQuote.source} + ${baseQuote.source}`,
+      currentPrice: tossQuote.currentPrice,
+      currentPriceTime: tossQuote.currentPriceTime,
+    });
+  }
+
+  if (baseQuote) {
+    return NextResponse.json(baseQuote);
+  }
+
+  if (tossQuote) {
+    return NextResponse.json({
+      symbol: "SOXL",
+      source: tossQuote.source,
+      latestClose: tossQuote.currentPrice,
+      latestCloseDate: toNewYorkDate(tossQuote.currentPriceTime),
+      priorClose: null,
+      currentPrice: tossQuote.currentPrice,
+      latestCloseTime: null,
+      currentPriceTime: tossQuote.currentPriceTime,
+      timezone: null,
+      warning: "Toss current price is being used because the regular close provider is unavailable.",
+    });
+  }
+
+  return NextResponse.json(
+    { error: "Failed to fetch SOXL quote." },
+    { status: 502 },
+  );
 }

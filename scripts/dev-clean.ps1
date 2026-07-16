@@ -14,7 +14,7 @@ Write-Host "Clearing Next.js cache..."
 Remove-Item -Path (Join-Path $root ".next") -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "Starting clean dev server..."
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm.cmd run dev" -WorkingDirectory $root -WindowStyle Hidden
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm.cmd run dev:tailnet" -WorkingDirectory $root -WindowStyle Hidden
 
 $deadline = (Get-Date).AddSeconds(30)
 do {
